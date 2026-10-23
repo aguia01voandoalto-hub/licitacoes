@@ -234,6 +234,14 @@ section.painel{margin-top:14px}.emp-grid section.painel{margin-top:0}
 .semb{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-top:12px}
 .semb div{display:grid;gap:2px;min-width:0}
 .semb span{color:var(--muted);font-size:13px}
+.empbar{position:relative}
+.eb-tg{position:absolute;top:12px;right:14px;font-size:12px;padding:5px 10px}
+.empbar.mini{grid-template-columns:minmax(220px,340px) 1fr auto;align-items:center;padding:10px 14px}
+.empbar.mini select{font-size:15px;padding:8px 10px}
+.empbar.mini .eb-k{margin-bottom:3px}
+.mini-r{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:13px;color:var(--muted);min-width:0}
+.mini-r b{color:var(--ink);font-weight:600}
+@media (max-width:900px){.empbar.mini{grid-template-columns:1fr}.eb-tg{position:static;justify-self:start;margin-bottom:4px}}
 
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
@@ -356,6 +364,7 @@ try {
 const lerRes = id => { try { return JSON.parse(localStorage.getItem("tl_res_" + id) || "null"); } catch(e) { return null; } };
 const gravarRes = (id, r) => { try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
 S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
+try { S.compacta = localStorage.getItem("tl_ui_compacta") === "1"; } catch(e) {}
 const salvar = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col})); } catch(e){} };
 
 const emp = () => S.empresas.find(e => e.id === S.empId) || null;
@@ -834,13 +843,22 @@ function renderNav(m) {
 function empbar() {
   const e = emp();
   if (!e) return `<section class="empbar sem"><div><span class="eb-k">Empresa</span><h2>Nenhuma empresa selecionada</h2><p>Cadastre a empresa para o Farejador mostrar só as licitações do que ela vende. Importe o Cartão CNPJ em PDF e as atividades (CNAE) viram áreas de busca automaticamente.</p></div><div><button class="btn2 prim" type="button" data-view="empresa">Cadastrar empresa</button></div></section>`;
+  if (S.compacta) return empbarMini(e);
   const ch = contagemPorArea();
-  return `<section class="empbar"><div class="eb-l"><span class="eb-k">Empresa ativa</span>
+  return `<section class="empbar"><button class="btn2 eb-tg" type="button" data-empbar-toggle aria-expanded="true">Recolher ▴</button><div class="eb-l"><span class="eb-k">Empresa ativa</span>
     <select id="sel-emp" aria-label="Escolher a empresa">${S.empresas.map(x => `<option value="${x.id}" ${x.id === S.empId ? "selected" : ""}>${esc(x.razao || "Empresa sem nome")}</option>`).join("")}<option value="__nova">+ Cadastrar nova empresa…</option></select>
     <div class="eb-n">${esc(e.cnpj || "sem CNPJ")}${e.porte ? " · " + esc(e.porte) : ""}${e.cnaes.length ? " · " + e.cnaes.length + " CNAE" + (e.cnaes.length > 1 ? "s" : "") : ""}</div></div>
     <div class="eb-r"><span class="eb-k">Buscar dentro das atividades da empresa</span>
     <div class="chips"><button class="chip" type="button" aria-pressed="${S.areaSel == null}" data-area-sel="">Todas as atividades</button>${ch.map(({a, n}) => `<button class="chip" type="button" aria-pressed="${S.areaSel === a.id}" data-area-sel="${esc(a.id)}">${esc(a.nome)} <b>${n}</b></button>`).join("")}<button class="chip ghost" type="button" data-ativ-abrir>Editar atividades</button></div>
     ${ch.length ? "" : '<div class="eb-n">Esta empresa ainda não tem áreas de busca. Importe o cartão CNPJ ou adicione áreas em Empresa.</div>'}</div>${barraEstados(e)}</section>`;
+}
+function empbarMini(e) {   // versão recolhida: empresa, filtros em uso e um botão para expandir
+  const at = S.areaSel ? (e.areas.find(a => a.id === S.areaSel) || {}).nome : "Todas as atividades";
+  const ufs = e.ufs.length ? (e.ufs.length > 5 ? e.ufs.slice(0, 5).join(", ") + " +" + (e.ufs.length - 5) : e.ufs.join(", ")) : "todos";
+  return `<section class="empbar mini"><div class="eb-l"><span class="eb-k">Empresa ativa</span>
+    <select id="sel-emp" aria-label="Escolher a empresa">${S.empresas.map(x => `<option value="${x.id}" ${x.id === S.empId ? "selected" : ""}>${esc(x.razao || "Empresa sem nome")}</option>`).join("")}<option value="__nova">+ Cadastrar nova empresa…</option></select></div>
+    <div class="mini-r"><span><b>Atividade:</b> ${esc(at)}</span><span><b>Estados:</b> ${esc(ufs)}</span></div>
+    <button class="btn2" type="button" data-empbar-toggle aria-expanded="false">Alterar filtros ▾</button></section>`;
 }
 const REGIOES = {Sul:["PR","SC","RS"], Sudeste:["SP","RJ","MG","ES"], "Centro-Oeste":["GO","MT","MS","DF"], Nordeste:["MA","PI","CE","RN","PB","PE","AL","SE","BA"], Norte:["AC","AP","AM","PA","RO","RR","TO"]};
 function barraEstados(e) {
@@ -1040,6 +1058,7 @@ function aoClicar(ev) {
   if (D.mover) { ev.stopPropagation(); setCol(D.mover, D.to); salvar(); if ("fechar" in D) fecharGaveta(); render(); return; }
   if (D.abrirBotao) { S.aberta = D.abrirBotao; gaveta(D.abrirBotao); return; }
   if (D.abrir && t.tagName !== "BUTTON") { S.aberta = D.abrir; gaveta(D.abrir); return; }
+  if ("empbarToggle" in D) { S.compacta = !S.compacta; try { localStorage.setItem("tl_ui_compacta", S.compacta ? "1" : "0"); } catch(err) {} return render(); }
   if (D.ir) return irPara(D.ir);
   if (D.view) { lerForm(); salvar(); return irPara(D.view); }
   if ("fechar" in D) return fecharGaveta();
