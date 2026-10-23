@@ -5,7 +5,8 @@ Uso:
   python farejador/farejador.py                 # grava data/oportunidades.json
   python farejador/farejador.py --supabase      # também grava no Supabase (precisa de SUPABASE_URL e SUPABASE_SERVICE_KEY)
 """
-import argparse, json, os, sys, time, unicodedata
+import argparse, json, os, re, sys, time, unicodedata
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse, urllib.request, urllib.error
 from datetime import date, datetime, timedelta, timezone
 
@@ -50,11 +51,16 @@ def buscar(uf, modalidade, ate):
         pagina += 1
 
 
+def _termo(k):
+    # palavra inteira, aceitando plural simples: "impressora" casa "impressoras", mas "monitor" não casa "monitoramento"
+    return re.compile(r"\b" + re.escape(normalizar(k)) + r"(?:s|es)?\b")
+
+
 def pontuar(objeto, perfil):
     t = normalizar(objeto)
     if any(normalizar(x) in t for x in perfil["excluir"]):
         return 0, []
-    achados = [k for k in perfil["termos"] if normalizar(k) in t]
+    achados = [k for k in perfil["termos"] if _termo(k).search(t)]
     return sum(perfil["termos"][k] for k in achados), achados
 
 
@@ -94,21 +100,31 @@ def main():
     ate = date.today() + timedelta(days=a.dias)
     agora = datetime.now(timezone.utc)
     achadas, vistas = {}, 0
-    for uf in perfil["ufs"]:
-        for mod in perfil["modalidades"]:
-            for r in buscar(uf, mod, ate):
-                vistas += 1
-                v = r.get("valorTotalEstimado")
-                if v is not None and not (perfil["valor_min"] <= v <= perfil["valor_max"]):
-                    continue
-                pts, achados = pontuar(r.get("objetoCompra"), perfil)
-                if pts < perfil["min_pontuacao"]:
-                    continue
-                item = converter(r, pts, achados)
-                if item["encerramento_proposta"] and datetime.fromisoformat(item["encerramento_proposta"]) < agora:
-                    continue
+
+    def varrer(uf_mod):
+        uf, mod = uf_mod
+        saida, lidas = [], 0
+        for r in buscar(uf, mod, ate):
+            lidas += 1
+            v = r.get("valorTotalEstimado")
+            if v is not None and not (perfil["valor_min"] <= v <= perfil["valor_max"]):
+                continue
+            pts, achados = pontuar(r.get("objetoCompra"), perfil)
+            if pts < perfil["min_pontuacao"]:
+                continue
+            item = converter(r, pts, achados)
+            if item["encerramento_proposta"] and datetime.fromisoformat(item["encerramento_proposta"]) < agora:
+                continue
+            saida.append(item)
+        print(f"{uf} modalidade {mod}: {lidas} lidas, {len(saida)} aprovadas", file=sys.stderr)
+        return lidas, saida
+
+    pares = [(uf, mod) for uf in perfil["ufs"] for mod in perfil["modalidades"]]
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for lidas, saida in ex.map(varrer, pares):
+            vistas += lidas
+            for item in saida:
                 achadas[item["id"]] = item
-            print(f"{uf} modalidade {mod}: {vistas} lidas, {len(achadas)} aprovadas", file=sys.stderr)
     itens = sorted(achadas.values(), key=lambda x: (-x["pontuacao"], x["encerramento_proposta"] or ""))
     os.makedirs(os.path.join(RAIZ, "data"), exist_ok=True)
     json.dump(itens, open(os.path.join(RAIZ, "data", "oportunidades.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)

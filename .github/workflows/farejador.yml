@@ -1,0 +1,21 @@
+name: Farejador
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # todo dia às 06:00 (Brasília)
+  workflow_dispatch:       # botão "Run workflow" na aba Actions
+
+jobs:
+  farejar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Buscar no PNCP e gravar no Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python farejador/farejador.py --supabase --dias 45
