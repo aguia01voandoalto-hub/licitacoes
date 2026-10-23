@@ -84,8 +84,18 @@ def converter(r, pontos, achados):
     }
 
 
+def credenciais():
+    url = os.environ.get("SUPABASE_URL", "").strip().strip("\"'").rstrip("/")
+    chave = os.environ.get("SUPABASE_SERVICE_KEY", "").strip().strip("\"'")
+    if url and not url.startswith("http"):
+        url = "https://" + url
+    if not url or not chave:
+        sys.exit("Faltam os segredos SUPABASE_URL e/ou SUPABASE_SERVICE_KEY (GitHub: Settings > Secrets and variables > Actions).")
+    return url, chave
+
+
 def enviar_supabase(itens):
-    url, chave = os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"]
+    url, chave = credenciais()
     for i in range(0, len(itens), 200):
         req = urllib.request.Request(
             f"{url}/rest/v1/oportunidades?on_conflict=id", data=json.dumps(itens[i:i + 200]).encode(), method="POST",
@@ -99,6 +109,8 @@ def main():
     ap.add_argument("--supabase", action="store_true")
     ap.add_argument("--dias", type=int, default=60, help="janela de encerramento das propostas")
     a = ap.parse_args()
+    if a.supabase:
+        credenciais()  # falha logo, antes da busca demorada
     perfil = json.load(open(os.path.join(RAIZ, "perfil.json"), encoding="utf-8"))
     ate = date.today() + timedelta(days=a.dias)
     agora = datetime.now(timezone.utc)
