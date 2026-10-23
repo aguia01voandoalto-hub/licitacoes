@@ -4,115 +4,130 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Time de Licitações</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: faixa da equipe de agentes no topo, quadro Kanban de 4 colunas abaixo, guia de primeiros passos à direita no desktop */
+/* Layout: navegação por telas no topo; Início = sala de controle isométrica escura (painéis na parede, mesas, robôs) + prazos, atividade e passos */
 :root{
-  --bg:#eef1f2; --surface:#ffffff; --ink:#14232b; --muted:#5d6e76; --line:#d5dde0;
-  --accent:#0b5d57; --accent-soft:#d9ece9; --warn:#b4570a; --warn-soft:#fbe9d6;
-  --ok:#2c7a3f; --ok-soft:#dff0e2; --col:#e5eaec; --floor:#cfd9dc; --floor-l:#b9c6ca; --floor-r:#a9b8bd; --wood:#c99a68; --wood-l:#a67847; --wood-r:#8d6538; --paper:#f7f9f9; --scene:#dfe7ea;
-  --f-display:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;
+  --bg:#0d1012; --surface:#161a1d; --surface2:#1d2326; --ink:#eceff1; --muted:#8f9ba1; --line:#293135;
+  --accent:#f2c200; --accent-ink:#141414; --accent-text:#f2c200; --accent-soft:#2c2808;
+  --warn:#ff8a5b; --warn-soft:#33201a; --ok:#47d17f; --ok-soft:#14291d; --bad:#ff5a5f;
+  --col:#12161a; --scene-a:#0a0d0f;
+  --c-far:#2ec4b6; --c-ana:#8c9bff; --c-des:#f2a900; --c-red:#ff6b9a;
+  --f-display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
   --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0e171b; --surface:#16242a; --ink:#e6eef0; --muted:#93a5ac; --line:#28393f;
-  --accent:#58c4b9; --accent-soft:#16373a; --warn:#f0a35c; --warn-soft:#3a2915;
-  --ok:#7fd18f; --ok-soft:#18321f; --col:#111d22; --floor:#22373e; --floor-l:#1a2c32; --floor-r:#15252a; --wood:#8a6540; --wood-l:#6c4e31; --wood-r:#58402a; --paper:#dfe6e8; --scene:#0f1b20; color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#0e171b; --surface:#16242a; --ink:#e6eef0; --muted:#93a5ac; --line:#28393f;
-  --accent:#58c4b9; --accent-soft:#16373a; --warn:#f0a35c; --warn-soft:#3a2915;
-  --ok:#7fd18f; --ok-soft:#18321f; --col:#111d22; --floor:#22373e; --floor-l:#1a2c32; --floor-r:#15252a; --wood:#8a6540; --wood-l:#6c4e31; --wood-r:#58402a; --paper:#dfe6e8; --scene:#0f1b20; color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#eef0ec; --surface:#ffffff; --surface2:#f4f5f2; --ink:#15191b; --muted:#5f6b70; --line:#d3d9d6;
+  --accent:#f2c200; --accent-ink:#141414; --accent-text:#8a6a00; --accent-soft:#faf0bd;
+  --warn:#b4480f; --warn-soft:#fbe5d8; --ok:#1f7a45; --ok-soft:#dcf0e3; --bad:#c0262c;
+  --col:#e4e8e5; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#eef0ec; --surface:#ffffff; --surface2:#f4f5f2; --ink:#15191b; --muted:#5f6b70; --line:#d3d9d6;
+  --accent:#f2c200; --accent-ink:#141414; --accent-text:#8a6a00; --accent-soft:#faf0bd;
+  --warn:#b4480f; --warn-soft:#fbe5d8; --ok:#1f7a45; --ok-soft:#dcf0e3; --bad:#c0262c;
+  --col:#e4e8e5; color-scheme:light}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);margin:0;
   padding-block:0 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.wrap{max-width:1240px;margin:0 auto}
-header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:18px 0 14px;border-bottom:1px solid var(--line)}
-.brand{font:700 20px/1 var(--f-display);letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
-.brand i{width:22px;height:22px;border-radius:5px;background:var(--accent);display:inline-block;position:relative}
-.brand i::after{content:"§";position:absolute;inset:0;display:grid;place-items:center;color:var(--surface);font:700 14px var(--f-display)}
-.empresa{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;min-width:0}
-.empresa b{font-weight:600}
-.empresa span{color:var(--muted);font-size:12px}
-.tag{font:500 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.mock{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.wrap{max-width:1280px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding:14px 0;border-bottom:1px solid var(--line)}
+.brand{font:700 20px/1 var(--f-display);letter-spacing:.02em;display:flex;align-items:center;gap:10px;text-transform:uppercase}
+.brand i{width:24px;height:24px;border-radius:5px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font:700 15px var(--f-display);font-style:normal}
+nav{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+nav button{font:600 13px var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:6px;padding:8px 12px;cursor:pointer;display:flex;gap:6px;align-items:center}
+nav button[aria-current=page]{color:var(--accent-ink);background:var(--accent)}
+nav button .n{font:500 11px var(--f-mono);background:var(--surface2);color:var(--ink);border-radius:999px;padding:0 6px}
+nav button[aria-current=page] .n{background:rgba(0,0,0,.18);color:var(--accent-ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,.card:focus-visible,[role=button]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1.t{font:700 22px var(--f-display);letter-spacing:.02em;margin:20px 0 4px;text-transform:uppercase}
+p.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.view{padding-top:6px}
 
-.live{display:flex;align-items:center;gap:10px;margin:18px 0 10px}
-.live h2{font:700 16px var(--f-display);margin:0}
-.live .st{font-size:11px}
-.time{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 18px}
-.agente{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0;display:flex;flex-direction:column}
-.cena{background:var(--scene);padding:6px 10px 0;border-bottom:1px solid var(--line)}
-.cena svg{display:block;width:100%;max-width:190px;height:auto;margin:0 auto}
-.info{padding:10px 14px 12px}
-.agente h3{font:600 15px var(--f-display);margin:0;display:flex;justify-content:space-between;gap:8px;align-items:center}
-.agente p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
-.st{font:500 11px var(--f-mono);display:inline-flex;align-items:center;gap:6px;color:var(--ok)}
-.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.st.idle{color:var(--muted)}
-.agente .num{font:500 12px var(--f-mono);margin-top:8px;color:var(--ink)}
-.piso-t{fill:var(--floor)}.piso-l{fill:var(--floor-l)}.piso-r{fill:var(--floor-r)}
-.mesa-t{fill:var(--wood)}.mesa-l{fill:var(--wood-l)}.mesa-r{fill:var(--wood-r)}
-.papel{fill:var(--paper)}
-.bob{animation:bob 2.6s ease-in-out infinite;transform-box:fill-box}
-.bob.b2{animation-delay:-.7s}.bob.b3{animation-delay:-1.4s}.bob.b4{animation-delay:-2s}
-.lupa{animation:lupa 2.2s ease-in-out infinite;transform-origin:96px 66px;transform-box:view-box}
-@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-@keyframes lupa{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(10deg)}}
-@media (prefers-reduced-motion:reduce){.bob,.lupa{animation:none}}
-.main{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start}
-.passos{background:#0b5d57;color:#fff;border-radius:8px;padding:16px}
-.passos h2{font:700 17px var(--f-display);margin:0 0 4px}
-.passos p{margin:0 0 12px;font-size:13px;opacity:.92}
+/* sala de controle */
+.sala{background:radial-gradient(120% 90% at 50% 0%,#1b2226 0%,#0a0d0f 70%);border:1px solid #2b3338;border-radius:12px;overflow:hidden;margin-top:16px}
+.hud{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 14px;border-bottom:1px solid #2b3338;font:500 12px var(--f-mono);color:#a9b4ba;text-transform:uppercase;letter-spacing:.06em}
+.hud b{color:#f2c200;font-weight:500}
+.hud .dot{width:8px;height:8px;border-radius:50%;background:#47d17f;display:inline-block;margin-right:6px;box-shadow:0 0 8px #47d17f;animation:pulse 1.8s infinite}
+.cena-wrap{overflow-x:auto}
+.cena-wrap svg{display:block;width:100%;min-width:600px;max-width:1100px;height:auto;margin:0 auto}
+.agentes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#2b3338;border-top:1px solid #2b3338}
+.ag{background:#0f1315;color:#eceff1;border:0;text-align:left;padding:12px 14px;cursor:pointer;display:grid;gap:3px;min-width:0;font:inherit}
+.ag:hover{background:#151b1e}
+.ag b{font:700 14px var(--f-display);letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.ag b::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
+.ag span{font-size:12.5px;color:#9aa6ac}
+.ag em{font:500 12px var(--f-mono);font-style:normal;color:#eceff1}
+.paineis{display:grid;grid-template-columns:1.2fr 1.2fr 1fr;gap:14px;margin-top:16px}
+.painel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.painel h2{font:700 13px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);margin:0 0 10px}
+.lin{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);font-size:13px;min-width:0}
+.lin:first-of-type{border-top:0}
+.lin .o{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lin .d{font:500 12px var(--f-mono);white-space:nowrap}
+.d.hot{color:var(--bad)}.d.mid{color:var(--warn)}.d.cool{color:var(--ok)}
+.tagag{font:600 10px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;border-radius:4px;padding:1px 6px;color:#101010;white-space:nowrap}
+.passos{background:var(--accent);color:var(--accent-ink);border:0}
+.passos h2{color:var(--accent-ink)}
 .passos ol{margin:0;padding:0;list-style:none;display:grid;gap:8px}
 .passos li{display:flex;gap:10px;align-items:flex-start;font-size:13px}
-.passos li b{flex:none;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;font:500 11px var(--f-mono)}
-.passos li.feito b{background:#fff;color:var(--accent)}
-.passos li.feito span{opacity:.75;text-decoration:line-through}
-.btn{display:block;margin-top:14px;text-align:center;background:#fff;color:#0b5d57;font:600 13px var(--f-body);border:0;border-radius:6px;padding:9px 12px;width:100%;cursor:pointer}
-.btn:focus-visible,.card:focus-visible,.acao:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.passos li b{flex:none;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.15);display:grid;place-items:center;font:500 11px var(--f-mono)}
+.passos li.feito b{background:#141414;color:var(--accent)}
+.passos li.feito span{opacity:.6;text-decoration:line-through}
+.passos .btn2{margin-top:12px;background:#141414;color:#f2c200;border-color:#141414;width:100%}
 
-.kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;min-width:0}
-.col{background:var(--col);border-radius:8px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:8px}
-.col h2{font:600 13px var(--f-display);margin:0 2px 2px;display:flex;justify-content:space-between;align-items:center;text-transform:uppercase;letter-spacing:.05em}
-.col h2 span{font:500 12px var(--f-mono);color:var(--muted);letter-spacing:0}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px;display:flex;flex-direction:column;gap:7px;min-width:0;text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
-.card .org{font:600 12px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.03em;overflow-wrap:anywhere}
-.card .obj{font-weight:500;font-size:13.5px;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.meta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12px;color:var(--muted)}
-.valor{font:500 13px var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
-.pill{font:500 11px var(--f-mono);border-radius:999px;padding:2px 8px;background:var(--accent-soft);color:var(--accent)}
-.pill.warn{background:var(--warn-soft);color:var(--warn)}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.acoes{display:flex;gap:6px;margin-top:2px}
-.acao{flex:1;font:500 12px var(--f-body);border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:6px 8px;cursor:pointer}
-.acao.prim{background:var(--accent);border-color:var(--accent);color:var(--surface)}
-.vazio{border:1px dashed var(--line);border-radius:8px;padding:14px 10px;color:var(--muted);font-size:12.5px;text-align:center}
-.mais{font:500 12px var(--f-mono);color:var(--muted);text-align:center;padding:4px}
-footer{margin-top:20px;color:var(--muted);font-size:12px}
-
-@media (max-width:1060px){.main{grid-template-columns:1fr}.passos{order:-1}.kanban{grid-template-columns:repeat(2,minmax(0,1fr))}.time{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:560px){.kanban{grid-template-columns:1fr}.time{gap:8px}.info{padding:8px 10px 10px}.agente p{display:none}.empresa{margin-left:0;align-items:flex-start}}
+/* ferramentas e quadro */
 .tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 .tools input[type=search],.tools select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-width:0}
 .tools input[type=search]{flex:1 1 180px}
 .chip{font:500 12px var(--f-mono);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 10px;cursor:pointer}
-.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn2{font:500 13px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:7px 12px;cursor:pointer}
-.btn2.prim{background:var(--accent);border-color:var(--accent);color:var(--surface)}
-.btn2:focus-visible,.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.sp{margin-left:auto}
-.card{cursor:pointer}
-.acao{text-align:center}
-.mais{cursor:pointer;background:transparent;border:1px dashed var(--line);border-radius:6px;color:var(--muted)}
+.btn2.prim{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .fonte{font-size:12px;color:var(--muted);margin:0 0 10px}
 .fonte.erro{color:var(--warn)}
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;min-width:0}
+.col{background:var(--col);border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.col h2{font:700 12px var(--f-display);margin:0 2px 2px;display:flex;justify-content:space-between;align-items:center;text-transform:uppercase;letter-spacing:.08em}
+.col h2 span{font:500 12px var(--f-mono);color:var(--muted);letter-spacing:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px;display:flex;flex-direction:column;gap:7px;min-width:0;text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
+.card:hover{border-color:var(--accent)}
+.card .org{font:600 12px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.03em;overflow-wrap:anywhere}
+.card .obj{font-weight:500;font-size:13.5px;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12px;color:var(--muted)}
+.valor{font:500 13px var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.pill{font:500 11px var(--f-mono);border-radius:999px;padding:2px 8px;background:var(--accent-soft);color:var(--accent-text)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.acoes{display:flex;gap:6px;margin-top:2px}
+.acao{flex:1;font:500 12px var(--f-body);border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:6px 8px;cursor:pointer;text-align:center}
+.acao.prim{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.vazio{border:1px dashed var(--line);border-radius:8px;padding:14px 10px;color:var(--muted);font-size:12.5px;text-align:center}
+.mais{cursor:pointer;background:transparent;border:1px dashed var(--line);border-radius:6px;color:var(--muted);font:500 12px var(--f-mono);padding:6px}
+
+/* propostas, documentos, empresa */
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px}
+.kpi b{display:block;font:700 28px var(--f-display);font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:12px}
+.docrow{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
+.docrow small{color:var(--muted);display:block}
+.docrow input,.form input,.form select{font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:760px}
+.form label{display:grid;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+.form label.l{grid-column:1/-1}
+.ok{color:var(--ok)}.falta{color:var(--warn)}
+
 /* gaveta */
-.veu{position:fixed;inset:0;background:rgba(5,12,15,.5);z-index:20}
-.gaveta{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);z-index:21;overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 16px;border-left:1px solid var(--line)}
+.veu{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}
+.gaveta{position:fixed;top:0;right:0;bottom:0;width:min(580px,100%);background:var(--bg);z-index:21;overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 16px;border-left:1px solid var(--line)}
 .gaveta h2{font:700 19px/1.2 var(--f-display);margin:8px 0 4px;text-wrap:balance}
-.gaveta h3{font:600 12px var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:20px 0 8px}
+.gaveta h3{font:700 12px var(--f-display);text-transform:uppercase;letter-spacing:.1em;color:var(--accent-text);margin:20px 0 8px}
 .fechar{float:right}
+.tag{font:500 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
 .bloco{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;gap:8px}
 .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;font-size:13px}
 .kv dt{color:var(--muted)}.kv dd{margin:0;overflow-wrap:anywhere}
@@ -120,77 +135,85 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
 .item:first-child{border-top:0;padding-top:0}
 .cit{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .sev{font:500 11px var(--f-mono);border-radius:4px;padding:1px 6px;margin-right:6px;text-transform:uppercase}
-.sev.alta{background:var(--warn-soft);color:var(--warn)}.sev.media{background:var(--accent-soft);color:var(--accent)}.sev.baixa{background:var(--ok-soft);color:var(--ok)}
+.sev.alta{background:var(--warn-soft);color:var(--warn)}.sev.media{background:var(--accent-soft);color:var(--accent-text)}.sev.baixa{background:var(--ok-soft);color:var(--ok)}
 .rec{font-weight:600}
 .lacuna{color:var(--muted);font-size:13px;margin:0;padding-left:18px}
-.ok{color:var(--ok)}.falta{color:var(--warn)}
 .aviso{background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:8px 10px;font-size:12.5px}
 .decl{border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .decl summary{padding:10px 12px;cursor:pointer;font-weight:500;font-size:13.5px}
 .decl pre{white-space:pre-wrap;font:12.5px/1.5 var(--f-body);margin:0;padding:0 12px 12px}
 .decl .acoes{padding:0 12px 12px}
-/* modal */
-.modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(5,12,15,.55);padding:16px}
-.modal>div{background:var(--bg);border:1px solid var(--line);border-radius:10px;width:min(640px,100%);max-height:calc(100% - 16px);overflow:auto;padding:16px}
-.modal h2{font:700 18px var(--f-display);margin:0 0 12px}
-.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.form label{display:grid;gap:3px;font-size:12px;color:var(--muted);min-width:0}
-.form label.l{grid-column:1/-1}
-.form input,.form select{font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
-.docrow{display:grid;grid-template-columns:minmax(0,1fr) 140px auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
-.docrow:first-of-type{border-top:0}
-.docrow small{color:var(--muted);display:block}
-.docrow input{font:13px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
-@media(max-width:560px){.form{grid-template-columns:1fr}.docrow{grid-template-columns:1fr 1fr}.docrow>:last-child{grid-column:1/-1}.kv{grid-template-columns:1fr}}
-[hidden]{display:none!important}
-html{color-scheme:light}
-</style>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="piso" viewBox="0 0 160 170"><polygon class="piso-l" points="0,120 80,160 80,170 0,130"/><polygon class="piso-r" points="80,160 160,120 160,130 80,170"/><polygon class="piso-t" points="0,120 80,80 160,120 80,160"/></symbol><symbol id="mesa" viewBox="0 0 160 170"><polygon class="mesa-l" points="38,86 80,107 80,127 38,106"/><polygon class="mesa-r" points="80,107 122,86 122,106 80,127"/><polygon class="mesa-t" points="38,86 80,65 122,86 80,107"/></symbol></defs></svg>
 
+/* animações da sala */
+.bob{animation:bob 2.6s ease-in-out infinite}
+.bob.b1{animation-delay:-.7s}.bob.b2{animation-delay:-1.4s}.bob.b3{animation-delay:-2s}
+.arm{transform-box:fill-box;transform-origin:50% 0;animation:tecla .45s ease-in-out infinite alternate}
+.arm.r{animation-delay:-.22s}
+.eye{animation:pisca 4.5s infinite;transform-box:fill-box;transform-origin:center}
+.varre{transform-box:view-box;animation:gira 3.2s linear infinite}
+.barra{transform-box:fill-box;transform-origin:0 50%;animation:cresce 2.4s ease-in-out infinite alternate}
+.marq{animation:marq 28s linear infinite}
+.piscar{animation:pulse 1.6s infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}
+@keyframes tecla{from{transform:rotate(-7deg)}to{transform:rotate(7deg)}}
+@keyframes pisca{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+@keyframes gira{to{transform:rotate(360deg)}}
+@keyframes cresce{from{transform:scaleX(.25)}to{transform:scaleX(1)}}
+@keyframes marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.bob,.arm,.eye,.varre,.barra,.marq,.piscar,.hud .dot{animation:none}}
+
+@media (max-width:1060px){.kanban{grid-template-columns:repeat(2,minmax(0,1fr))}.paineis{grid-template-columns:1fr 1fr}.agentes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.kanban,.paineis,.form,.kpis{grid-template-columns:1fr}.kv{grid-template-columns:1fr}.docrow{grid-template-columns:1fr 1fr}.docrow>:last-child{grid-column:1/-1}nav{margin-left:0}}
+
+.fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
+.varre{transform-box:fill-box;transform-origin:50% 50%}
+</style>
 <div class="wrap">
 <header>
-  <div class="brand"><i></i>Time de Licitações</div>
-  <button class="btn2 sp" type="button" data-abrir-modal="cofre">Cofre de documentos</button>
-  <button class="btn2" type="button" data-abrir-modal="empresa">Dados da empresa</button>
+  <div class="brand"><i>§</i>Time de Licitações</div>
+  <nav id="nav" aria-label="Telas"></nav>
 </header>
-<div class="live"><h2>Escritório ao vivo</h2><span class="st">4 agentes online</span></div>
-<section class="time" aria-label="Agentes">
-<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Farejador"><use href="#piso"/><g class="bob "><rect x="65" y="42" width="30" height="36" rx="9" fill="#2a8f86"/><circle cx="80" cy="30" r="11" fill="#e8b48f"/>
-<path d="M69 30A11 11 0 0 1 91 30Z" fill="#3b2a20"/>
-<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><g class="lupa"><line x1="94" y1="62" x2="104" y2="48" stroke="#2a8f86" stroke-width="6" stroke-linecap="round"/><circle cx="108" cy="42" r="8" fill="none" stroke="#14232b" stroke-width="2.6"/><line x1="102" y1="48" x2="97" y2="56" stroke="#14232b" stroke-width="2.6" stroke-linecap="round"/></g><circle cx="68" cy="86" r="3.6" fill="#e8b48f"/><circle cx="92" cy="86" r="3.6" fill="#e8b48f"/></svg></div><div class="info"><h3>Farejador <span class="st">trabalhando</span></h3><p>Busca no PNCP e filtra pelo seu perfil.</p><div class="num" id="n-fare">—</div></div></div>
-<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Analista"><use href="#piso"/><g class="bob b2"><rect x="65" y="42" width="30" height="36" rx="9" fill="#5b6bd6"/><circle cx="80" cy="30" r="11" fill="#c98a5e"/>
-<path d="M69 30A11 11 0 0 1 91 30Z" fill="#1c1511"/>
-<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/><circle cx="76" cy="31.5" r="4" fill="none" stroke="#14232b" stroke-width="1.2"/><circle cx="84" cy="31.5" r="4" fill="none" stroke="#14232b" stroke-width="1.2"/></g><use href="#mesa"/><polygon class="papel" points="62,92 80,83 98,92 80,101"/><line x1="68" y1="92" x2="80" y2="86.5" stroke="#5b6bd6" stroke-width="1.6"/><line x1="72" y1="95" x2="88" y2="87" stroke="#9aa5ad" stroke-width="1.2"/><circle cx="68" cy="86" r="3.6" fill="#c98a5e"/><circle cx="92" cy="86" r="3.6" fill="#c98a5e"/></svg></div><div class="info"><h3>Analista <span class="st idle">aguardando</span></h3><p>Lê o edital e aponta prazos, multas e exigências.</p><div class="num" id="n-anal">—</div></div></div>
-<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Despachante"><use href="#piso"/><g class="bob b3"><rect x="65" y="42" width="30" height="36" rx="9" fill="#d38a1f"/><circle cx="80" cy="30" r="11" fill="#f0c8a3"/>
-<path d="M69 30A11 11 0 0 1 91 30Z" fill="#8a4b1c"/>
-<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><polygon points="82,93 100,84 114,91 96,100" fill="#e9b34a"/><polygon points="82,93 90,89 94,91 86,95" fill="#f2c96d"/><rect x="60" y="86" width="10" height="5" rx="1" fill="#14232b"/><circle cx="68" cy="86" r="3.6" fill="#f0c8a3"/><circle cx="92" cy="86" r="3.6" fill="#f0c8a3"/></svg></div><div class="info"><h3>Despachante <span class="st idle">aguardando</span></h3><p>Confere certidões e documentos de habilitação.</p><div class="num" id="n-desp">—</div></div></div>
-<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Redator"><use href="#piso"/><g class="bob b4"><rect x="65" y="42" width="30" height="36" rx="9" fill="#c2527a"/><circle cx="80" cy="30" r="11" fill="#a8693f"/>
-<path d="M69 30A11 11 0 0 1 91 30Z" fill="#14100d"/>
-<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><polygon class="papel" points="62,92 80,83 98,92 80,101"/><line x1="68" y1="92" x2="80" y2="86.5" stroke="#9aa5ad" stroke-width="1.2"/><line x1="72" y1="95" x2="88" y2="87" stroke="#9aa5ad" stroke-width="1.2"/><line x1="92" y1="80" x2="100" y2="94" stroke="#e9b34a" stroke-width="2.6" stroke-linecap="round"/><circle cx="68" cy="86" r="3.6" fill="#a8693f"/><circle cx="92" cy="86" r="3.6" fill="#a8693f"/></svg></div><div class="info"><h3>Redator <span class="st idle">aguardando</span></h3><p>Monta proposta e declarações obrigatórias.</p><div class="num" id="n-red">—</div></div></div>
+
+<section class="view" id="v-inicio"></section>
+
+<section class="view" id="v-oportunidades" hidden>
+  <h1 class="t">Oportunidades</h1>
+  <p class="sub">O que o Farejador encontrou no PNCP para o seu nicho. Analise, decida e acompanhe cada licitação no quadro.</p>
+  <p class="fonte" id="fonte">Carregando oportunidades…</p>
+  <div class="tools"><input type="search" id="busca" placeholder="Buscar por objeto, órgão ou cidade" aria-label="Buscar"><select id="ordem" aria-label="Ordenar"><option value="relevancia">Mais relevantes</option><option value="prazo">Prazo mais próximo</option></select></div>
+  <div class="tools" id="ufs" aria-label="Filtrar por estado"></div>
+  <div class="kanban" id="kanban"></div>
 </section>
-<div class="main">
-  <div style="min-width:0">
-    <p class="fonte" id="fonte">Carregando oportunidades…</p>
-    <div class="tools"><input type="search" id="busca" placeholder="Buscar por objeto, órgão ou cidade" aria-label="Buscar"><select id="ordem" aria-label="Ordenar"><option value="relevancia">Mais relevantes</option><option value="prazo">Prazo mais próximo</option></select></div>
-    <div class="tools" id="ufs" aria-label="Filtrar por estado"></div>
-    <section class="kanban" id="kanban" aria-label="Oportunidades"></section>
-  </div>
-  <aside class="passos" aria-label="Primeiros passos">
-    <h2>Primeiros passos</h2><p>Quatro passos até a primeira proposta.</p>
-    <ol id="passos"></ol>
-    <button class="btn" type="button" id="passos-btn" hidden></button>
-  </aside>
-</div>
-<footer>Fonte dos editais: PNCP. As análises e os modelos de declaração são apoio e não substituem a revisão de um advogado especialista em licitações. Dados da empresa e do cofre ficam só neste navegador.</footer>
+
+<section class="view" id="v-propostas" hidden>
+  <h1 class="t">Propostas</h1>
+  <p class="sub">Licitações em que você decidiu participar. Confira os documentos e prepare as declarações antes do prazo.</p>
+  <div id="lista-propostas"></div>
+</section>
+
+<section class="view" id="v-documentos" hidden>
+  <h1 class="t">Documentos</h1>
+  <p class="sub">O cofre do Despachante. Com as validades em dia, ele confere a habilitação de cada edital.</p>
+  <div id="lista-docs"></div>
+</section>
+
+<section class="view" id="v-empresa" hidden>
+  <h1 class="t">Empresa</h1>
+  <p class="sub">Dados usados para preencher as declarações e propostas.</p>
+  <div id="lista-empresa"></div>
+</section>
+
+<footer class="fonte" style="margin-top:24px">Fonte dos editais: PNCP. As análises e os modelos de declaração são apoio e não substituem a revisão de um advogado especialista em licitações. Dados da empresa e do cofre ficam só neste navegador.</footer>
 </div>
 <div class="veu" id="veu" hidden data-fechar></div>
 <aside class="gaveta" id="gaveta" hidden tabindex="-1" aria-label="Detalhes da oportunidade"></aside>
-<div class="modal" id="modal" hidden></div>
 <script>
 const SB_URL = "https://qywemhkqrpjtrcdorxub.supabase.co";
 const SB_KEY = "sb_publishable__ck00oz4LaKprpGUyYb6ag_sNO-oRoO"; // chave pública; o RLS só permite leitura
 const SNAPSHOT = /*SNAPSHOT*/null;
 const COLS = [["farejadas","Farejadas"],["analise","Em análise"],["participar","Participar"],["descartadas","Descartadas"]];
+const VIEWS = ["inicio","oportunidades","propostas","documentos","empresa"];
 const GRUPOS = {fiscal_trabalhista:"Regularidade fiscal e trabalhista",tecnica:"Qualificação técnica",economico_financeira:"Econômico-financeira",juridica:"Habilitação jurídica"};
 const DOCS_PADRAO = [
   ["Cartão CNPJ","juridica"],["Contrato social consolidado","juridica"],
@@ -200,9 +223,9 @@ const DOCS_PADRAO = [
 const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const brl = v => v == null ? "valor sigiloso" : Number(v).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-const hoje = () => new Date(new Date().toDateString());
+const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" : "R$ " + Math.round(v/1e3) + " mil";
 
-let S = {ops:[], analises:{}, fonte:"", col:{}, empresa:{}, docs:[], uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}};
+let S = {ops:[], analises:{}, fonte:"", col:{}, empresa:{}, docs:[], uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null};
 try { const j = JSON.parse(localStorage.getItem("tl_v1")||"null"); if (j) Object.assign(S, {col:j.col||{}, empresa:j.empresa||{}, docs:j.docs||[]}); } catch(e){}
 const salvar = () => { try { localStorage.setItem("tl_v1", JSON.stringify({col:S.col, empresa:S.empresa, docs:S.docs})); } catch(e){} };
 
@@ -228,6 +251,153 @@ const rotuloPrazo = d => d == null ? "sem prazo" : d < 0 ? "encerrada" : d === 0
 const colDe = o => S.col[o.id] || "farejadas";
 const vigente = o => !o.encerramento_proposta || diasPara(o.encerramento_proposta) >= 0;
 
+function statusDoc(d) {
+  if (!d.validade) return "ok";
+  const n = Math.ceil((new Date(d.validade) - new Date()) / 864e5);
+  return n < 0 ? "vencida" : n <= 30 ? "vence" : "ok";
+}
+
+function metricas() {
+  const ab = S.ops.filter(vigente), m = {abertas: ab.length, porDia: Array(21).fill(0), porUF: {}, valor: 0, n7: 0};
+  for (const o of ab) {
+    const d = diasPara(o.encerramento_proposta);
+    if (d != null && d <= 7) m.n7++;
+    if (d != null && d >= 0 && d <= 20) m.porDia[d]++;
+    m.porUF[o.uf] = (m.porUF[o.uf] || 0) + 1;
+    m.valor += Number(o.valor_estimado) || 0;
+  }
+  m.docs = {total:S.docs.length, ok:S.docs.filter(d => statusDoc(d) === "ok").length, vence:S.docs.filter(d => statusDoc(d) === "vence").length, vencida:S.docs.filter(d => statusDoc(d) === "vencida").length};
+  m.analises = Object.keys(S.analises).length;
+  m.part = S.ops.filter(o => colDe(o) === "participar").length;
+  m.emAnalise = S.ops.filter(o => colDe(o) === "analise").length;
+  m.prazos = ab.slice().sort((a,b) => (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9")).slice(0, 6);
+  return m;
+}
+
+/* ============ SALA DE CONTROLE (SVG isométrico) ============ */
+const SC = {S:36, C:Math.sqrt(3)/2, W:12, D:10, ox:372, oy:176, H:4.2};
+const P = (x,y,z) => [SC.ox + (x-y)*SC.C*SC.S, SC.oy + (x+y)*.5*SC.S - z*SC.S];
+const pt = (x,y,z) => { const p = P(x,y,z); return p[0].toFixed(1) + "," + p[1].toFixed(1); };
+const poly = (pts, fill, ex="") => `<polygon points="${pts.map(p => pt(...p)).join(" ")}" fill="${fill}" ${ex}/>`;
+const box = (x,y,z,w,d,h,c) =>
+  poly([[x,y,z+h],[x+w,y,z+h],[x+w,y+d,z+h],[x,y+d,z+h]], c[0]) +
+  poly([[x,y+d,z],[x+w,y+d,z],[x+w,y+d,z+h],[x,y+d,z+h]], c[1]) +
+  poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]], c[2]);
+const K = SC.S / 100, KC = (SC.C * K).toFixed(5), KH = (.5 * K).toFixed(5), KV = K.toFixed(5);
+const planoY = (x0, y, z1, inner) => { const [e,f] = P(x0,y,z1); return `<g transform="matrix(${KC} ${KH} 0 ${KV} ${e.toFixed(1)} ${f.toFixed(1)})">${inner}</g>`; };
+const planoX = (x, y1, z1, inner) => { const [e,f] = P(x,y1,z1); return `<g transform="matrix(${KC} -${KH} 0 ${KV} ${e.toFixed(1)} ${f.toFixed(1)})">${inner}</g>`; };
+const AM = "#f2c200", VD = "#3ddc84", VM = "#ff5a5f", CZ = "#9aa6ac";
+const T = (x,y,txt,sz,fill,cls="fd",ex="") => `<text x="${x}" y="${y}" font-size="${sz}" fill="${fill}" class="${cls}" ${ex}>${esc(txt)}</text>`;
+const moldura = (w,h,inner) => `<rect width="${w}" height="${h}" rx="5" fill="#05080a" stroke="${AM}" stroke-width="4"/>${inner}`;
+
+function telaGeral(m) {
+  const mx = Math.max(1, ...m.porDia), n = m.porDia.length;
+  const pts = m.porDia.map((v,i) => [(24 + i * (360/(n-1))).toFixed(1), (232 - v/mx*80).toFixed(1)]);
+  const ufs = Object.entries(m.porUF).sort((a,b) => b[1]-a[1]).slice(0, 5), um = Math.max(1, ...ufs.map(x => x[1]));
+  const faixa = Object.entries(m.porUF).sort((a,b) => b[1]-a[1]).map(([u,c]) => `${u} ${c} ABERTAS`).join("   ·   ") + "   ·   PNCP   ·   LEI 14.133/2021   ·   ";
+  return moldura(740,260,
+    `<svg x="10" y="8" width="720" height="22" viewBox="0 0 720 22"><g class="marq">${T(0,16,faixa+faixa,13,AM,"fm")}</g></svg>` +
+    T(24,52,"OPORTUNIDADES ABERTAS",11,CZ,"fm") + T(24,112,String(m.abertas),66,VD,"fd","font-weight=\"700\"") +
+    T(150,92,`${m.n7} ENCERRAM EM 7 DIAS`,12,m.n7 ? "#ff8a5b" : CZ,"fm") + T(150,110,"PRAZOS DOS PRÓXIMOS 20 DIAS",10,CZ,"fm") +
+    `<polygon points="24,232 ${pts.map(p => p.join(",")).join(" ")} 384,232" fill="${VD}" opacity=".3"/><polyline points="${pts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${VD}" stroke-width="2.5"/>` +
+    `<line x1="24" y1="232" x2="384" y2="232" stroke="#33414a"/>` +
+    `<rect x="414" y="42" width="2" height="196" fill="#222c31"/>` +
+    T(436,52,"VALOR EM DISPUTA",11,CZ,"fm") + T(436,98,mi(m.valor),38,AM,"fd","font-weight=\"700\"") + T(436,116,"soma dos valores estimados abertos",10,CZ,"fm") +
+    T(436,146,"ABERTAS POR ESTADO",11,CZ,"fm") +
+    ufs.map(([u,c],i) => `<rect x="${436 + i*58}" y="${232 - c/um*62}" width="40" height="${c/um*62}" fill="${AM}" opacity=".85"/>${T(436+i*58+20,226-c/um*62,String(c),12,"#fff","fm",'text-anchor="middle"')}${T(436+i*58+20,248,u,11,CZ,"fm",'text-anchor="middle"')}`).join("") +
+    T(716,250,"● 4/4 AGENTES EM OPERAÇÃO",10,VD,"fm",'text-anchor="end" class="piscar"'));
+}
+
+function telaPrazos(m) {
+  const linhas = m.prazos.map((o,i) => {
+    const d = diasPara(o.encerramento_proposta), cor = d <= 3 ? VM : d <= 7 ? "#ff8a5b" : VD, y = 62 + i * 31;
+    return `<rect x="16" y="${y-16}" width="708" height="27" fill="${i%2 ? "transparent" : "#0c1215"}"/>` +
+      T(24,y,o.uf,13,AM,"fm") + T(62,y,(o.orgao||"").slice(0,38),13,"#e6ecef","fd") +
+      T(430,y,(o.objeto||"").slice(0,28),11,CZ,"fm") + T(612,y,mi(Number(o.valor_estimado)||0).replace(/^R\$ 0 mil$/,"sigiloso"),12,"#e6ecef","fm",'text-anchor="end"') +
+      T(716,y,d === 0 ? "HOJE" : d + " DIA" + (d === 1 ? "" : "S"),13,cor,"fm",'text-anchor="end"');
+  }).join("");
+  return moldura(740,260, T(20,30,"CENTRAL DE PRAZOS",15,AM,"fd","font-weight=\"700\"") + T(716,30,"PRÓXIMOS A ENCERRAR",11,CZ,"fm",'text-anchor="end"') + `<line x1="16" y1="38" x2="724" y2="38" stroke="#2a353b"/>` + (linhas || T(24,100,"Aguardando oportunidades do Farejador…",14,CZ,"fm")));
+}
+
+function telaCofre(m) {
+  const b = (x,v,t,c) => T(x,120,String(v),54,c,"fd",'text-anchor="middle" font-weight="700"') + T(x,142,t,10,CZ,"fm",'text-anchor="middle"');
+  return moldura(280,260, T(18,30,"COFRE DE DOCUMENTOS",13,AM,"fd","font-weight=\"700\"") + `<line x1="12" y1="38" x2="268" y2="38" stroke="#2a353b"/>` +
+    b(60,m.docs.ok,"EM DIA",VD) + b(140,m.docs.vence,"VENCEM",m.docs.vence ? "#ff8a5b" : CZ) + b(220,m.docs.vencida,"VENCIDAS",m.docs.vencida ? VM : CZ) +
+    T(18,184,m.docs.total ? m.docs.total + " documentos cadastrados" : "Cofre vazio: cadastre as certidões",12,"#e6ecef","fm") +
+    T(18,206,m.analises + " análise" + (m.analises === 1 ? "" : "s") + " de edital pronta" + (m.analises === 1 ? "" : "s"),12,"#e6ecef","fm") +
+    T(18,228,m.part + " proposta" + (m.part === 1 ? "" : "s") + " para preparar",12,"#e6ecef","fm"));
+}
+
+/* conteúdo dos monitores das mesas (95x60) */
+const mon = (inner) => `<rect width="95" height="60" fill="#04080a"/>${inner}`;
+function telaMon(k, i, m) {
+  if (k === "far" && i === 0) return mon(`<circle cx="47" cy="30" r="25" fill="none" stroke="#2ec4b6" opacity=".55"/><circle cx="47" cy="30" r="13" fill="none" stroke="#2ec4b6" opacity=".4"/><g class="varre"><circle cx="47" cy="30" r="25" fill="none" stroke="none"/><line x1="47" y1="30" x2="47" y2="5" stroke="#2ec4b6" stroke-width="2"/></g><circle class="piscar" cx="62" cy="20" r="3" fill="#f2c200"/><circle class="piscar" cx="34" cy="42" r="3" fill="#f2c200"/>`);
+  if (k === "far") return mon(T(47,34,String(m.abertas),30,"#2ec4b6","fd",'text-anchor="middle" font-weight="700"') + T(47,50,"ABERTAS",9,CZ,"fm",'text-anchor="middle"'));
+  if (k === "ana" && i === 0) return mon([0,1,2,3,4].map(r => `<rect x="8" y="${8+r*10}" width="${[70,58,76,50,64][r]}" height="5" fill="${r === 2 ? AM : "#5a6a72"}"/>`).join("") + `<rect x="8" y="${8}" width="30" height="5" fill="#8c9bff"/>`);
+  if (k === "ana") return mon(T(47,34,String(m.analises),30,"#8c9bff","fd",'text-anchor="middle" font-weight="700"') + T(47,50,"ANÁLISES",9,CZ,"fm",'text-anchor="middle"'));
+  if (k === "des" && i === 0) return mon([0,1,2,3].map(r => `<rect x="9" y="${9+r*12}" width="8" height="8" fill="${r < m.docs.ok + 1 && m.docs.total ? VD : VM}"/><rect x="22" y="${11+r*12}" width="${[54,46,60,40][r]}" height="4" fill="#5a6a72"/>`).join(""));
+  if (k === "des") return mon(T(47,34,String(m.docs.total),30,AM,"fd",'text-anchor="middle" font-weight="700"') + T(47,50,"DOCUMENTOS",9,CZ,"fm",'text-anchor="middle"'));
+  if (i === 0) return mon([0,1,2,3].map(r => `<rect class="barra" style="animation-delay:${-r*.5}s" x="8" y="${9+r*12}" width="${[78,64,72,48][r]}" height="5" fill="#ff6b9a"/>`).join(""));
+  return mon(T(47,34,String(m.part),30,"#ff6b9a","fd",'text-anchor="middle" font-weight="700"') + T(47,50,"PROPOSTAS",9,CZ,"fm",'text-anchor="middle"'));
+}
+
+const PAL = {tampo:["#5d6a70","#3f4a4f","#313b3f"], metal:["#3a4348","#2a3236","#21282b"], tela:["#10161a","#0b1013","#080c0e"]};
+const ENT = [
+  {k:"far", nome:"Farejador", cor:"#2ec4b6", x:1.0, y:2.0, ir:"oportunidades", txt:m => m.abertas + " abertas"},
+  {k:"ana", nome:"Analista", cor:"#8c9bff", x:6.9, y:1.8, ir:"oportunidades", txt:m => m.analises + " análises"},
+  {k:"des", nome:"Despachante", cor:"#f2a900", x:1.2, y:6.9, ir:"documentos", txt:m => m.docs.total + " docs"},
+  {k:"red", nome:"Redator", cor:"#ff6b9a", x:6.4, y:6.5, ir:"propostas", txt:m => m.part + " propostas"}];
+
+function robo(cor, n) {
+  return `<g class="bob b${n}"><rect class="arm l" x="-21" y="-50" width="8" height="24" rx="3" fill="#cdd4d8"/><rect class="arm r" x="13" y="-50" width="8" height="24" rx="3" fill="#cdd4d8"/>
+    <rect x="-14" y="-54" width="28" height="32" rx="9" fill="#eceff1"/><rect x="-6" y="-46" width="12" height="7" rx="2" fill="${cor}"/><rect x="-14" y="-36" width="28" height="3" fill="#cdd4d8"/>
+    <rect x="-13" y="-83" width="26" height="25" rx="8" fill="#f7f9fa"/><rect x="-10" y="-78" width="20" height="14" rx="6" fill="#0f1519"/>
+    <ellipse class="eye" cx="-4.5" cy="-71" rx="2.4" ry="2.6" fill="${cor}"/><ellipse class="eye" cx="4.5" cy="-71" rx="2.4" ry="2.6" fill="${cor}"/>
+    <line x1="0" y1="-83" x2="0" y2="-90" stroke="#9aa5ab" stroke-width="2"/><circle class="piscar" cx="0" cy="-92" r="3" fill="${cor}"/></g>`;
+}
+
+function mesa(e, m, n) {
+  const w = 3.0, d = 1.3, x = e.x, y = e.y, cx = x + w/2, cy = y - .35, [bx, by] = P(cx, cy, 0);
+  let s = poly([[x-.3,y-.3,0],[x+w+.4,y-.3,0],[x+w+.4,y+d+.4,0],[x-.3,y+d+.4,0]], "rgba(0,0,0,.35)");
+  s += box(cx-.07, cy-.2, 0, .14, .14, .32, PAL.metal) + box(cx-.5, cy-.6, .32, 1.0, .95, .12, PAL.metal) + box(cx-.5, cy-.72, .44, 1.0, .14, .95, PAL.metal);
+  s += `<g transform="translate(${bx.toFixed(1)},${by.toFixed(1)})">${robo(e.cor, n)}</g>`;
+  s += box(x+.12, y+d-.22, 0, .14, .14, .7, PAL.metal) + box(x+w-.26, y+d-.22, 0, .14, .14, .7, PAL.metal) + box(x+w-.26, y+.08, 0, .14, .14, .7, PAL.metal);
+  s += box(x, y, .7, w, d, .08, PAL.tampo) + box(x, y+d-.05, .7, w, .05, .08, [e.cor, e.cor, e.cor]);
+  s += box(x+1.0, y+.72, .78, 1.0, .36, .04, ["#2b3438","#20272a","#1a2124"]);
+  [x+.15, x+w-1.1].forEach((mx, i) => {
+    const my = y + .3;
+    s += box(mx+.4, my, .78, .15, .15, .16, PAL.metal) + box(mx, my, .94, .95, .07, .6, PAL.tela);
+    s += planoY(mx, my+.07, 1.54, telaMon(e.k, i, m));
+  });
+  const [tx, ty] = [bx, by - 108], rot = `${e.nome} · ${e.txt(m)}`, tw = rot.length * 6.4 + 30;
+  s += `<g transform="translate(${tx.toFixed(1)},${ty.toFixed(1)})"><rect x="${-tw/2}" y="-11" width="${tw}" height="22" rx="11" fill="#12181b" stroke="${e.cor}" stroke-width="1.2"/><circle cx="${-tw/2+12}" cy="0" r="4" fill="${e.cor}" class="piscar"/><text x="${-tw/2+22}" y="4.5" font-size="11.5" fill="#eceff1" class="fd" font-weight="600">${esc(rot)}</text></g>`;
+  s += `<g data-ir="${e.ir}" role="button" tabindex="0" aria-label="${esc(e.nome)}: abrir ${e.ir}" style="cursor:pointer"><title>${esc(e.nome)}</title><rect x="${(bx-95).toFixed(1)}" y="${(by-125).toFixed(1)}" width="190" height="205" fill="transparent"/></g>`;
+  return [x + y + (w + d)/2, s];
+}
+
+function planta(x, y) {
+  const [px, py] = P(x, y, 0);
+  return [x + y, `<g transform="translate(${px.toFixed(1)},${py.toFixed(1)})"><ellipse cx="0" cy="2" rx="16" ry="6" fill="rgba(0,0,0,.35)"/><path d="M-12 -22 L12 -22 L9 0 L-9 0 Z" fill="#2b3438"/><path d="M-12 -22 L12 -22 L11 -26 L-11 -26 Z" fill="#3a4348"/>
+    <ellipse cx="-8" cy="-40" rx="7" ry="15" fill="#4fd08a" transform="rotate(-24 -8 -40)"/><ellipse cx="8" cy="-42" rx="7" ry="16" fill="#35b574" transform="rotate(22 8 -42)"/><ellipse cx="0" cy="-48" rx="7" ry="17" fill="#6be3a6"/></g>`];
+}
+
+function sala(m) {
+  const H = SC.H, W = SC.W, D = SC.D;
+  let s = `<defs><linearGradient id="piso" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b3236"/><stop offset="1" stop-color="#1b2023"/></linearGradient></defs>`;
+  s += poly([[0,0,0],[W,0,0],[W,D,0],[0,D,0]], "url(#piso)");
+  for (let i = 1; i < W; i++) s += `<polyline points="${pt(i,0,0)} ${pt(i,D,0)}" stroke="#363e43" stroke-width=".8" fill="none"/>`;
+  for (let j = 1; j < D; j++) s += `<polyline points="${pt(0,j,0)} ${pt(W,j,0)}" stroke="#363e43" stroke-width=".8" fill="none"/>`;
+  s += poly([[.35,.35,0],[W-.35,.35,0],[W-.35,D-.35,0],[.35,D-.35,0]], "none", `stroke="${AM}" stroke-width="1.4" stroke-dasharray="7 6" opacity=".35"`);
+  s += poly([[0,0,0],[W,0,0],[W,0,H],[0,0,H]], "#13181b") + poly([[0,0,0],[0,D,0],[0,D,H],[0,0,H]], "#0e1215");
+  s += poly([[0,0,H-.3],[W,0,H-.3],[W,0,H],[0,0,H]], "#1c2327") + poly([[0,0,H-.3],[0,D,H-.3],[0,D,H],[0,0,H]], "#161c1f");
+  s += poly([[0,0,H-.18],[W,0,H-.18],[W,0,H-.1],[0,0,H-.1]], AM) + poly([[0,0,H-.18],[0,D,H-.18],[0,D,H-.1],[0,0,H-.1]], AM, 'opacity=".85"');
+  s += poly([[0,0,0],[W,0,0],[W,0,.25],[0,0,.25]], "#1b2125") + poly([[0,0,0],[0,D,0],[0,D,.25],[0,0,.25]], "#171c1f");
+  s += planoY(.8, 0, 3.75, telaGeral(m)) + planoY(8.55, 0, 3.75, telaCofre(m)) + planoX(0, 8.6, 3.75, telaPrazos(m));
+  const ents = ENT.map((e,i) => mesa(e, m, i)).concat([planta(.9,.9), planta(11.0,.9), planta(.9,9.1), planta(11.1,9.2)]);
+  ents.sort((a,b) => a[0] - b[0]);
+  return s + ents.map(x => x[1]).join("");
+}
+
 function filtradas(col) {
   const q = S.q.trim().toLowerCase();
   let r = S.ops.filter(o => colDe(o) === col && (col !== "farejadas" || vigente(o)) &&
@@ -236,12 +406,6 @@ function filtradas(col) {
     ? (a,b) => (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9")
     : (a,b) => b.pontuacao - a.pontuacao || (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9"));
   return r;
-}
-
-function statusDoc(d) {
-  if (!d.validade) return "ok";
-  const n = Math.ceil((new Date(d.validade) - new Date()) / 864e5);
-  return n < 0 ? "vencida" : n <= 30 ? "vence" : "ok";
 }
 
 function card(o) {
@@ -257,41 +421,6 @@ function card(o) {
     <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade||"")}</span></div>
     <div class="meta"><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span><span class="pill">${o.pontuacao} pts</span>${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}</div>
     <div class="acoes">${bt.map(([to,t,p]) => `<button type="button" class="acao ${p?"prim":""}" data-mover="${esc(o.id)}" data-to="${to}">${t}</button>`).join("")}</div></div>`;
-}
-
-function render() {
-  const tem = S.ops.length;
-  $("#fonte").textContent = tem ? `${S.fonte} · ${tem} oportunidades` : S.fonte;
-  $("#fonte").className = "fonte" + (S.erro ? " erro" : "");
-  const ufs = [...new Set(S.ops.map(o => o.uf).filter(Boolean))].sort();
-  $("#ufs").innerHTML = `<button class="chip" type="button" aria-pressed="${!S.uf}" data-uf="">Todos</button>` + ufs.map(u => `<button class="chip" type="button" aria-pressed="${S.uf===u}" data-uf="${u}">${u}</button>`).join("");
-  $("#kanban").innerHTML = COLS.map(([k,t]) => {
-    const l = filtradas(k), lim = S.limite[k] || 50, vis = l.slice(0, lim);
-    const vazio = {farejadas:"Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
-    return `<div class="col"><h2>${t} <span>${l.length}</span></h2>${vis.map(card).join("") || `<div class="vazio">${vazio}</div>`}${l.length > lim ? `<button class="mais" type="button" data-mais="${k}">Mostrar mais ${Math.min(20, l.length-lim)}</button>` : ""}</div>`;
-  }).join("");
-  renderAgentes(); renderPassos();
-}
-
-function renderAgentes() {
-  const anal = Object.keys(S.analises).length, venc = S.docs.filter(d => statusDoc(d) !== "ok").length;
-  $("#n-fare").textContent = `${S.ops.filter(vigente).length} abertas`;
-  $("#n-anal").textContent = `${anal} análise${anal===1?"":"s"} pronta${anal===1?"":"s"}`;
-  $("#n-desp").textContent = S.docs.length ? `${S.docs.length} documentos${venc ? " · " + venc + " pedem atenção" : ""}` : "cofre vazio";
-  const part = S.ops.filter(o => colDe(o) === "participar").length;
-  $("#n-red").textContent = `${part} para preparar`;
-}
-
-function renderPassos() {
-  const e = S.empresa, p = [
-    [e.razao && e.cnpj, "Cadastrar os dados da empresa", "empresa"],
-    [S.docs.length > 0, "Cadastrar certidões no cofre de documentos", "cofre"],
-    [S.ops.some(o => colDe(o) !== "farejadas"), "Escolher uma oportunidade e clicar em Analisar", null],
-    [S.ops.some(o => colDe(o) === "participar"), "Revisar o rascunho da proposta antes de enviar", null]];
-  const prox = p.find(x => !x[0]);
-  $("#passos").innerHTML = p.map((x,i) => `<li class="${x[0]?"feito":""}"><b>${x[0]?"✓":i+1}</b><span>${x[1]}</span></li>`).join("");
-  const b = $("#passos-btn");
-  b.hidden = !prox || !prox[2]; if (prox && prox[2]) { b.textContent = prox[2]==="empresa" ? "Cadastrar a empresa" : "Abrir o cofre de documentos"; b.dataset.abrirModal = prox[2]; }
 }
 
 /* ---------- gaveta ---------- */
@@ -338,9 +467,9 @@ function gaveta(id) {
     const rec = {participar:"Participar", participar_com_ressalvas:"Participar com ressalvas", nao_participar:"Não participar"}[a.recomendacao] || a.recomendacao;
     h += `<div class="bloco"><div><span class="rec">${esc(rec)}.</span> ${esc(a.motivo_recomendacao||"")}</div>
       ${a.gerado_por ? `<div class="aviso">${esc(a.gerado_por)}</div>` : ""}
-      ${a.riscos?.length ? `<div><b>Riscos</b></div>` + a.riscos.map(r => `<div class="item"><span class="sev ${esc(r.gravidade)}">${esc(r.gravidade)}</span>${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
-      ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
-      ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.riscos?.length ? `<div><b>Riscos</b></div>` + a.riscos.map(r => `<div class="item"><span class="sev ${esc(r.gravidade)}">${esc(r.gravidade)}</span>${esc(r.descricao)}<span class="cit">${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
       ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
       ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
   } else {
@@ -356,56 +485,142 @@ function gaveta(id) {
 
   $("#gaveta").innerHTML = h; $("#veu").hidden = false; $("#gaveta").hidden = false; $("#gaveta").scrollTop = 0; $("#gaveta").focus();
 }
-const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; };
 
-/* ---------- modais ---------- */
-function modalEmpresa() {
-  const e = S.empresa, f = (k, t, cls="") => `<label class="${cls}">${t}<input id="e_${k}" value="${esc(e[k]||"")}"></label>`;
-  $("#modal").innerHTML = `<div><h2>Dados da empresa</h2><p class="fonte">Ficam só neste navegador e preenchem as declarações do Redator.</p><div class="form">
-    ${f("razao","Razão social","l")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte===p?"selected":""}>${p}</option>`).join("")}</select></label>
-    ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div>
-    <div class="acoes" style="margin-top:14px"><button class="btn2" type="button" data-fechar-modal>Cancelar</button><button class="btn2 prim" type="button" data-salvar-empresa>Salvar</button></div></div>`;
-  $("#modal").hidden = false; $("#e_razao").focus();
+
+
+/* ============ TELAS ============ */
+function renderNav(m) {
+  const n = {oportunidades: S.ops.filter(o => colDe(o) === "farejadas" && vigente(o)).length, propostas: m.part, documentos: m.docs.vence + m.docs.vencida};
+  const nomes = {inicio:"Início", oportunidades:"Oportunidades", propostas:"Propostas", documentos:"Documentos", empresa:"Empresa"};
+  $("#nav").innerHTML = VIEWS.map(v => `<button type="button" data-view="${v}" ${S.view === v ? 'aria-current="page"' : ""}>${nomes[v]}${n[v] ? `<span class="n">${n[v]}</span>` : ""}</button>`).join("");
 }
-function modalCofre() {
+
+function atividade(m) {
+  const L = [], tag = (c, t) => `<span class="tagag" style="background:${c}">${t}</span>`;
+  L.push([tag("#2ec4b6","Farejador"), `${m.abertas} oportunidades abertas no seu nicho; ${m.n7} encerram em até 7 dias.`]);
+  const prim = Object.entries(S.analises)[0];
+  if (prim) { const o = S.ops.find(x => x.id === prim[0]); L.push([tag("#8c9bff","Analista"), `Análise pronta${o ? ": " + esc(o.orgao) : ""}. Recomendação: ${esc(String(prim[1].recomendacao||"").replace(/_/g," "))}.`]); }
+  L.push([tag("#8c9bff","Analista"), m.emAnalise ? `${m.emAnalise} oportunidade${m.emAnalise>1?"s":""} em análise aguardando sua decisão.` : "Nenhuma oportunidade em análise. Escolha uma para eu ler o edital."]);
+  L.push([tag("#f2a900","Despachante"), !m.docs.total ? "O cofre está vazio. Cadastre as certidões para eu conferir a habilitação." : m.docs.vencida ? `${m.docs.vencida} documento(s) vencido(s). Renove antes de participar.` : m.docs.vence ? `${m.docs.vence} documento(s) vencem em até 30 dias.` : "Todos os documentos do cofre estão em dia."]);
+  L.push([tag("#ff6b9a","Redator"), m.part ? `${m.part} proposta${m.part>1?"s":""} com rascunho de declarações pronto.` : "Quando você marcar Participar, preparo as declarações obrigatórias."]);
+  return L.map(([t, x]) => `<div class="lin">${t}<span class="o" style="white-space:normal">${x}</span></div>`).join("");
+}
+
+function passos() {
+  const e = S.empresa, p = [
+    [e.razao && e.cnpj, "Cadastrar os dados da empresa", "empresa"],
+    [S.docs.length > 0, "Cadastrar certidões no cofre de documentos", "documentos"],
+    [S.ops.some(o => colDe(o) !== "farejadas"), "Escolher uma oportunidade e clicar em Analisar", "oportunidades"],
+    [S.ops.some(o => colDe(o) === "participar"), "Revisar o rascunho da proposta antes de enviar", "propostas"]];
+  const prox = p.find(x => !x[0]);
+  return `<ol>${p.map((x,i) => `<li class="${x[0]?"feito":""}"><b>${x[0]?"✓":i+1}</b><span>${x[1]}</span></li>`).join("")}</ol>` +
+    (prox ? `<button class="btn2" type="button" data-view="${prox[2]}">Ir para esta etapa</button>` : "");
+}
+
+function viewInicio(m) {
+  const venc = m.docs.vencida + m.docs.vence;
+  const ag = [["#2ec4b6","Farejador","oportunidades",`${m.abertas} abertas`,"Busca no PNCP e filtra pelo seu perfil."],
+    ["#8c9bff","Analista","oportunidades",`${m.analises} análise${m.analises===1?"":"s"} pronta${m.analises===1?"":"s"}`,"Lê o edital e aponta prazos, multas e exigências."],
+    ["#f2a900","Despachante","documentos", m.docs.total ? `${m.docs.total} documentos${venc ? " · " + venc + " pedem atenção" : ""}` : "cofre vazio","Confere certidões e documentos de habilitação."],
+    ["#ff6b9a","Redator","propostas",`${m.part} para preparar`,"Monta proposta e declarações obrigatórias."]];
+  const prazos = m.prazos.map(o => { const d = diasPara(o.encerramento_proposta); return `<div class="lin"><span class="tag">${esc(o.uf)}</span><span class="o" title="${esc(o.objeto)}">${esc(o.orgao)}</span><span class="d ${d<=3?"hot":d<=7?"mid":"cool"}">${d===0?"hoje":d+" d"}</span></div>`; }).join("");
+  return `<div class="sala"><div class="hud"><span><span class="dot"></span>Escritório ao vivo</span><span><b>4/4</b> agentes em operação</span><span>${esc(S.fonte)}</span></div>
+    <div class="cena-wrap"><svg viewBox="0 14 744 568" role="img" aria-label="Sala de controle com os quatro agentes em suas mesas">${sala(m)}</svg></div>
+    <div class="agentes">${ag.map(a => `<button class="ag" type="button" data-view="${a[2]}" style="--c:${a[0]}"><b>${a[1]}</b><span>${a[4]}</span><em>${a[3]}</em></button>`).join("")}</div></div>
+    <div class="paineis"><section class="painel"><h2>Prazos mais próximos</h2>${prazos || '<div class="vazio">Sem oportunidades abertas ainda.</div>'}</section>
+    <section class="painel"><h2>O que os agentes estão fazendo</h2>${atividade(m)}</section>
+    <section class="painel passos"><h2>Primeiros passos</h2>${passos()}</section></div>`;
+}
+
+function renderOport() {
+  $("#fonte").textContent = S.ops.length ? `${S.fonte} · ${S.ops.length} oportunidades` : S.fonte;
+  $("#fonte").className = "fonte" + (S.erro ? " erro" : "");
+  const ufs = [...new Set(S.ops.map(o => o.uf).filter(Boolean))].sort();
+  $("#ufs").innerHTML = `<button class="chip" type="button" aria-pressed="${!S.uf}" data-uf="">Todos</button>` + ufs.map(u => `<button class="chip" type="button" aria-pressed="${S.uf===u}" data-uf="${u}">${u}</button>`).join("");
+  $("#kanban").innerHTML = COLS.map(([k,t]) => {
+    const l = filtradas(k), lim = S.limite[k] || 50, vis = l.slice(0, lim);
+    const vazio = {farejadas:"Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
+    return `<div class="col"><h2>${t} <span>${l.length}</span></h2>${vis.map(card).join("") || `<div class="vazio">${vazio}</div>`}${l.length > lim ? `<button class="mais" type="button" data-mais="${k}">Mostrar mais ${Math.min(20, l.length-lim)}</button>` : ""}</div>`;
+  }).join("");
+}
+
+function viewPropostas() {
+  const l = S.ops.filter(o => colDe(o) === "participar").sort((a,b) => (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9"));
+  if (!l.length) return `<div class="vazio" style="max-width:520px">Nenhuma proposta em preparação. Em Oportunidades, marque Participar numa licitação e ela aparece aqui com a conferência de documentos e os rascunhos.</div><p><button class="btn2 prim" type="button" data-view="oportunidades">Ver oportunidades</button></p>`;
+  return `<div class="grid2">${l.map(o => {
+    const a = S.analises[o.id], hab = a ? a.habilitacao : DOCS_PADRAO.map(([t,g]) => ({grupo:g, exigencia:t}));
+    const falt = hab.filter(x => habilitacaoStatus(x.grupo)[0] === "falta").length, d = diasPara(o.encerramento_proposta);
+    return `<div class="card" role="button" tabindex="0" data-abrir="${esc(o.id)}"><div class="org">${esc(o.uf)} · ${esc(o.orgao)}</div><div class="obj">${esc(o.objeto)}</div>
+      <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span></div>
+      <div class="meta"><span class="${falt ? "falta" : "ok"}">${falt ? falt + " de " + hab.length + " exigências sem documento no cofre" : "Documentos do cofre cobrem as exigências"}</span></div>
+      <div class="acoes"><button class="acao" type="button" data-mover="${esc(o.id)}" data-to="analise">Voltar</button><button class="acao prim" type="button" data-abrir-botao="${esc(o.id)}">Preparar proposta</button></div></div>`; }).join("")}</div>`;
+}
+
+function viewDocumentos() {
+  const m = metricas().docs;
   const rows = S.docs.map((d,i) => { const st = statusDoc(d); return `<div class="docrow"><div>${esc(d.nome)}<small>${esc(GRUPOS[d.grupo]||"")} · <span class="${st==="ok"?"ok":"falta"}">${{ok:"em dia",vence:"vence em até 30 dias",vencida:"vencida"}[st]}</span></small></div>
     <input type="date" value="${esc(d.validade||"")}" data-validade="${i}" aria-label="Validade de ${esc(d.nome)}"><button class="acao" type="button" data-remover-doc="${i}">Remover</button></div>`; }).join("");
   const faltam = DOCS_PADRAO.filter(([n]) => !S.docs.some(d => d.nome === n));
-  $("#modal").innerHTML = `<div><h2>Cofre de documentos</h2><p class="fonte">Cadastre o nome e a validade. Os arquivos em si não são enviados a lugar nenhum.</p>
-    ${rows || `<div class="vazio">Nenhum documento ainda. Adicione abaixo as certidões que costumam ser exigidas.</div>`}
-    ${faltam.length ? `<div class="form" style="margin-top:12px;grid-template-columns:1fr auto"><label>Adicionar documento<select id="novo_doc">${faltam.map(([n,g]) => `<option value="${esc(n)}|${g}">${esc(n)}</option>`).join("")}</select></label><button class="btn2 prim" type="button" data-add-doc style="align-self:end">Adicionar</button></div>` : ""}
-    <div class="acoes" style="margin-top:14px"><button class="btn2 prim" type="button" data-fechar-modal>Concluir</button></div></div>`;
-  $("#modal").hidden = false;
+  return `<div class="kpis"><div class="kpi"><b class="ok">${m.ok}</b><span>em dia</span></div><div class="kpi"><b class="${m.vence?"falta":""}">${m.vence}</b><span>vencem em até 30 dias</span></div><div class="kpi"><b style="color:${m.vencida?"var(--bad)":"inherit"}">${m.vencida}</b><span>vencidas</span></div></div>
+    <div class="painel" style="max-width:860px">${rows || `<div class="vazio">Nenhum documento ainda. Adicione abaixo as certidões que costumam ser exigidas.</div>`}
+    ${faltam.length ? `<div class="form" style="margin-top:14px;grid-template-columns:1fr auto;align-items:end"><label>Adicionar documento<select id="novo_doc">${faltam.map(([n,g]) => `<option value="${esc(n)}|${g}">${esc(n)}</option>`).join("")}</select></label><button class="btn2 prim" type="button" data-add-doc>Adicionar</button></div>` : ""}</div>
+    <p class="fonte" style="margin-top:10px">Você cadastra só o nome e a validade. Os arquivos não são enviados a lugar nenhum.</p>`;
 }
-const fecharModal = () => { $("#modal").hidden = true; render(); const g = $("#gaveta"); if (!g.hidden && S.aberta) gaveta(S.aberta); };
 
-/* ---------- eventos ---------- */
-document.addEventListener("click", ev => {
-  const t = ev.target.closest("button,[data-abrir],a,summary"); if (!t) return;
+function viewEmpresa() {
+  const e = S.empresa, f = (k, t, cls="") => `<label class="${cls}">${t}<input id="e_${k}" value="${esc(e[k]||"")}"></label>`;
+  return `<div class="painel" style="max-width:800px"><div class="form">${f("razao","Razão social","l")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte===p?"selected":""}>${p}</option>`).join("")}</select></label>
+    ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div>
+    <div class="acoes" style="margin-top:14px;max-width:320px"><button class="btn2 prim" type="button" data-salvar-empresa>Salvar</button><span id="salvo" class="fonte" style="align-self:center;margin:0"></span></div></div>
+    <p class="fonte" style="margin-top:10px">Os dados ficam só neste navegador e preenchem as declarações do Redator.</p>`;
+}
+
+function render() {
+  const m = metricas(); renderNav(m);
+  VIEWS.forEach(v => $("#v-" + v).hidden = v !== S.view);
+  if (S.view === "inicio") { $("#v-inicio").innerHTML = viewInicio(m); const w = $(".cena-wrap"); if (w && !S.centrou) { w.scrollLeft = (w.scrollWidth - w.clientWidth) / 2; S.centrou = true; } }
+  if (S.view === "oportunidades") renderOport();
+  if (S.view === "propostas") $("#lista-propostas").innerHTML = viewPropostas();
+  if (S.view === "documentos") $("#lista-docs").innerHTML = viewDocumentos();
+  if (S.view === "empresa") $("#lista-empresa").innerHTML = viewEmpresa();
+}
+function irPara(v) {
+  if (!VIEWS.includes(v)) return;
+  S.view = v; try { history.replaceState(null, "", "#" + v); } catch(e){}
+  fecharGaveta(); render(); window.scrollTo(0, 0);
+}
+const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; S.aberta = null; };
+
+/* ============ EVENTOS ============ */
+function aoClicar(ev) {
+  const t = ev.target.closest("button,[data-abrir],[data-ir],a,summary"); if (!t) return;
   const D = t.dataset;
   if (D.mover) { ev.stopPropagation(); S.col[D.mover] = D.to; salvar(); if ("fechar" in D) fecharGaveta(); render(); return; }
+  if (D.abrirBotao) { S.aberta = D.abrirBotao; gaveta(D.abrirBotao); return; }
   if (D.abrir && t.tagName !== "BUTTON") { S.aberta = D.abrir; gaveta(D.abrir); return; }
-  if ("fechar" in D) { S.aberta = null; fecharGaveta(); return; }
+  if (D.ir) return irPara(D.ir);
+  if (D.view) return irPara(D.view);
+  if ("fechar" in D) return fecharGaveta();
   if (D.uf !== undefined) { S.uf = D.uf; render(); return; }
   if (D.mais) { S.limite[D.mais] = (S.limite[D.mais]||20) + 20; render(); return; }
-  if (D.abrirModal === "empresa") return modalEmpresa();
-  if (D.abrirModal === "cofre") return modalCofre();
-  if ("fecharModal" in D) return fecharModal();
-  if ("salvarEmpresa" in D) { for (const k of ["razao","cnpj","end","rep","cargo","cpf","porte"]) S.empresa[k] = $("#e_"+k).value.trim(); salvar(); return fecharModal(); }
-  if ("addDoc" in D) { const [nome, grupo] = $("#novo_doc").value.split("|"); S.docs.push({nome, grupo, validade:""}); salvar(); return modalCofre(); }
-  if (D.removerDoc) { S.docs.splice(+D.removerDoc, 1); salvar(); return modalCofre(); }
+  if (D.abrirModal) return irPara(D.abrirModal === "empresa" ? "empresa" : "documentos");
+  if ("salvarEmpresa" in D) { for (const k of ["razao","cnpj","end","rep","cargo","cpf","porte"]) S.empresa[k] = $("#e_"+k).value.trim(); salvar(); $("#salvo").textContent = "Salvo neste navegador."; return; }
+  if ("addDoc" in D) { const [nome, grupo] = $("#novo_doc").value.split("|"); S.docs.push({nome, grupo, validade:""}); salvar(); render(); return; }
+  if (D.removerDoc) { S.docs.splice(+D.removerDoc, 1); salvar(); render(); return; }
   if (D.copiar) { const txt = $("#"+D.copiar).textContent; (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => t.textContent = "Copiado", () => { const r = document.createRange(); r.selectNodeContents($("#"+D.copiar)); getSelection().removeAllRanges(); getSelection().addRange(r); t.textContent = "Selecionado: use Ctrl+C"; }); return; }
-});
+}
+document.addEventListener("click", aoClicar);
 document.addEventListener("keydown", ev => {
-  if (ev.key === "Escape") { if (!$("#modal").hidden) fecharModal(); else if (!$("#gaveta").hidden) { S.aberta = null; fecharGaveta(); } }
-  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".card")) { ev.preventDefault(); S.aberta = ev.target.dataset.abrir; gaveta(S.aberta); }
+  if (ev.key === "Escape" && !$("#gaveta").hidden) fecharGaveta();
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".card,[data-ir]")) { ev.preventDefault(); ev.target.click(); }
 });
 document.addEventListener("change", ev => {
-  if (ev.target.dataset.validade !== undefined) { S.docs[+ev.target.dataset.validade].validade = ev.target.value; salvar(); modalCofre(); }
+  if (ev.target.dataset.validade !== undefined) { S.docs[+ev.target.dataset.validade].validade = ev.target.value; salvar(); render(); }
   if (ev.target.id === "ordem") { S.ordem = ev.target.value; render(); }
 });
-$("#busca").addEventListener("input", ev => { S.q = ev.target.value; render(); });
+$("#busca").addEventListener("input", ev => { S.q = ev.target.value; renderOport(); });
+window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
 
-(async () => { render(); await carregar(); render(); })();
+(async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; render(); await carregar(); render(); })();
 
 </script>
