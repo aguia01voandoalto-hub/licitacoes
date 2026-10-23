@@ -1,25 +1,14 @@
 {
-  "empresa": "Sua empresa Ltda.",
-  "nicho": "Material de escritório e informática",
-  "ufs": ["SP", "MG", "RJ", "PR", "GO"],
-  "modalidades": [6, 8],
-  "valor_min": 5000,
-  "valor_max": 500000,
-  "min_pontuacao": 10,
-  "termos": {
-    "papel sulfite": 15, "papel a4": 15, "material de escritório": 15, "material de expediente": 15,
-    "material de consumo": 10, "suprimentos de informática": 15, "toner": 15, "cartucho": 15,
-    "impressora": 15, "multifuncional": 15, "computador": 15, "notebook": 15, "desktop": 12,
-    "monitor": 10, "teclado": 10, "mouse": 10, "periféricos": 12, "nobreak": 12, "estabilizador": 10,
-    "tablet": 10, "scanner": 12, "roteador": 8, "switch": 8, "pen drive": 10, "hd externo": 10,
-    "ssd": 10, "memória ram": 10, "webcam": 10, "headset": 10, "projetor": 10,
-    "papelaria": 15, "caneta": 8, "grampeador": 8, "pasta": 5, "envelope": 8, "etiqueta": 8,
-    "bobina": 5, "peças e acessórios de informática": 15, "equipamentos de informática": 15,
-    "tecnologia da informação": 8, "cabo hdmi": 8, "cabo de rede": 8, "fonte de alimentação": 8
-  },
-  "excluir": [
-    "medicamento", "hospitalar", "odontológic", "laboratorial", "merenda", "gêneros alimentícios",
-    "combustível", "pneu", "construção civil", "obra", "reforma", "limpeza", "veículo", "peças automotivas",
-    "locação de", "serviço de manutenção", "software", "licença", "plano de saúde", "uniforme", "concreto"
-  ]
+ "ufs": [
+  "SP",
+  "MG",
+  "RJ",
+  "PR",
+  "GO"
+ ],
+ "modalidades": [
+  6,
+  8
+ ],
+ "observacao": "O Farejador guarda todas as licitações abertas destes estados e modalidades. O filtro por atividade é feito por empresa, na tela."
 }

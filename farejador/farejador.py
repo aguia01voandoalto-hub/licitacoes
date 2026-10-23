@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Farejador: busca contratações com propostas abertas no PNCP e filtra pelo perfil da empresa.
+"""Farejador: busca no PNCP as contratações com propostas abertas nos estados e modalidades de perfil.json.
+
+Não filtra por palavras: cada empresa filtra pelas próprias atividades na tela (ou consultando o banco).
 
 Uso:
   python farejador/farejador.py                 # grava data/oportunidades.json
   python farejador/farejador.py --supabase      # também grava no Supabase (precisa de SUPABASE_URL e SUPABASE_SERVICE_KEY)
 """
-import argparse, json, os, re, sys, time, unicodedata
+import argparse, json, os, sys, time, unicodedata
 from concurrent.futures import ThreadPoolExecutor
 import urllib.parse, urllib.request, urllib.error
 from datetime import date, datetime, timedelta, timezone
@@ -52,19 +54,6 @@ def buscar(uf, modalidade, ate):
         for r in d.get("data", []):
             yield r
         pagina += 1
-
-
-def _termo(k):
-    # palavra inteira, aceitando plural simples: "impressora" casa "impressoras", mas "monitor" não casa "monitoramento"
-    return re.compile(r"\b" + re.escape(normalizar(k)) + r"(?:s|es)?\b")
-
-
-def pontuar(objeto, perfil):
-    t = normalizar(objeto)
-    if any(normalizar(x) in t for x in perfil["excluir"]):
-        return 0, []
-    achados = [k for k in perfil["termos"] if _termo(k).search(t)]
-    return sum(perfil["termos"][k] for k in achados), achados
 
 
 def converter(r, pontos, achados):
@@ -121,13 +110,7 @@ def main():
         saida, lidas = [], 0
         for r in buscar(uf, mod, ate):
             lidas += 1
-            v = r.get("valorTotalEstimado")
-            if v is not None and not (perfil["valor_min"] <= v <= perfil["valor_max"]):
-                continue
-            pts, achados = pontuar(r.get("objetoCompra"), perfil)
-            if pts < perfil["min_pontuacao"]:
-                continue
-            item = converter(r, pts, achados)
+            item = converter(r, 0, [])
             if item["encerramento_proposta"] and datetime.fromisoformat(item["encerramento_proposta"]) < agora:
                 continue
             saida.append(item)
