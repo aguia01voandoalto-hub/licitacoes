@@ -20,8 +20,9 @@ def normalizar(t):
     return "".join(c for c in t if unicodedata.category(c) != "Mn")
 
 
-def get(url, tentativas=4):
+def get(url, tentativas=8):
     for i in range(tentativas):
+        espera = 2 ** min(i, 4)
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "farejador/1.0"})
             with urllib.request.urlopen(req, timeout=60) as r:
@@ -30,12 +31,14 @@ def get(url, tentativas=4):
         except urllib.error.HTTPError as e:
             if e.code == 204:
                 return {"data": []}
+            if e.code == 429:
+                espera = max(espera, int(e.headers.get("Retry-After") or 0), 15 * (i + 1))
             if i == tentativas - 1:
                 raise
         except Exception:
             if i == tentativas - 1:
                 raise
-        time.sleep(2 ** i)
+        time.sleep(espera)
 
 
 def buscar(uf, modalidade, ate):
@@ -120,8 +123,18 @@ def main():
         return lidas, saida
 
     pares = [(uf, mod) for uf in perfil["ufs"] for mod in perfil["modalidades"]]
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        for lidas, saida in ex.map(varrer, pares):
+    falhas = []
+
+    def seguro(uf_mod):
+        try:
+            return varrer(uf_mod)
+        except Exception as e:  # uma UF/modalidade com erro não derruba as outras
+            falhas.append(uf_mod)
+            print(f"FALHOU {uf_mod}: {e}", file=sys.stderr)
+            return 0, []
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        for lidas, saida in ex.map(seguro, pares):
             vistas += lidas
             for item in saida:
                 achadas[item["id"]] = item
@@ -132,6 +145,9 @@ def main():
     if a.supabase:
         enviar_supabase(itens)
         print("enviado ao Supabase")
+    if falhas:
+        print(f"ATENÇÃO: {len(falhas)} buscas falharam: {falhas}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
