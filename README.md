@@ -8,3 +8,14 @@ Quatro agentes de IA que encontram, analisam e preparam a participação em lici
 - **Redator**: rascunhos de proposta e declarações.
 
 Banco: Supabase, esquema `licitacoes` (dados públicos). Segredos ficam em `.env`, nunca no Git.
+
+## Publicação
+
+A página é um arquivo só (`produto.html`). A Vercel publica a pasta `site/`, que recebe uma cópia dele:
+
+```
+python tools/publicar.py      # copia produto.html para site/index.html
+git add -A && git commit -m "..." && git push
+```
+
+Cada push na branch `main` publica de novo. Não há segredos na página: a chave do Supabase que ela usa é a pública, e o banco só permite leitura.
