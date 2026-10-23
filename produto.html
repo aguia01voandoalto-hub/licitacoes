@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Time de Licitações</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: faixa da equipe de agentes no topo, quadro Kanban de 4 colunas abaixo, guia de primeiros passos à direita no desktop */
+:root{
+  --bg:#eef1f2; --surface:#ffffff; --ink:#14232b; --muted:#5d6e76; --line:#d5dde0;
+  --accent:#0b5d57; --accent-soft:#d9ece9; --warn:#b4570a; --warn-soft:#fbe9d6;
+  --ok:#2c7a3f; --ok-soft:#dff0e2; --col:#e5eaec; --floor:#cfd9dc; --floor-l:#b9c6ca; --floor-r:#a9b8bd; --wood:#c99a68; --wood-l:#a67847; --wood-r:#8d6538; --paper:#f7f9f9; --scene:#dfe7ea;
+  --f-display:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e171b; --surface:#16242a; --ink:#e6eef0; --muted:#93a5ac; --line:#28393f;
+  --accent:#58c4b9; --accent-soft:#16373a; --warn:#f0a35c; --warn-soft:#3a2915;
+  --ok:#7fd18f; --ok-soft:#18321f; --col:#111d22; --floor:#22373e; --floor-l:#1a2c32; --floor-r:#15252a; --wood:#8a6540; --wood-l:#6c4e31; --wood-r:#58402a; --paper:#dfe6e8; --scene:#0f1b20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e171b; --surface:#16242a; --ink:#e6eef0; --muted:#93a5ac; --line:#28393f;
+  --accent:#58c4b9; --accent-soft:#16373a; --warn:#f0a35c; --warn-soft:#3a2915;
+  --ok:#7fd18f; --ok-soft:#18321f; --col:#111d22; --floor:#22373e; --floor-l:#1a2c32; --floor-r:#15252a; --wood:#8a6540; --wood-l:#6c4e31; --wood-r:#58402a; --paper:#dfe6e8; --scene:#0f1b20; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);
+  padding-block:0 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:18px 0 14px;border-bottom:1px solid var(--line)}
+.brand{font:700 20px/1 var(--f-display);letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.brand i{width:22px;height:22px;border-radius:5px;background:var(--accent);display:inline-block;position:relative}
+.brand i::after{content:"§";position:absolute;inset:0;display:grid;place-items:center;color:var(--surface);font:700 14px var(--f-display)}
+.empresa{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;min-width:0}
+.empresa b{font-weight:600}
+.empresa span{color:var(--muted);font-size:12px}
+.tag{font:500 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+.mock{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+
+.live{display:flex;align-items:center;gap:10px;margin:18px 0 10px}
+.live h2{font:700 16px var(--f-display);margin:0}
+.live .st{font-size:11px}
+.time{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 18px}
+.agente{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0;display:flex;flex-direction:column}
+.cena{background:var(--scene);padding:6px 10px 0;border-bottom:1px solid var(--line)}
+.cena svg{display:block;width:100%;max-width:190px;height:auto;margin:0 auto}
+.info{padding:10px 14px 12px}
+.agente h3{font:600 15px var(--f-display);margin:0;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.agente p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
+.st{font:500 11px var(--f-mono);display:inline-flex;align-items:center;gap:6px;color:var(--ok)}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st.idle{color:var(--muted)}
+.agente .num{font:500 12px var(--f-mono);margin-top:8px;color:var(--ink)}
+.piso-t{fill:var(--floor)}.piso-l{fill:var(--floor-l)}.piso-r{fill:var(--floor-r)}
+.mesa-t{fill:var(--wood)}.mesa-l{fill:var(--wood-l)}.mesa-r{fill:var(--wood-r)}
+.papel{fill:var(--paper)}
+.bob{animation:bob 2.6s ease-in-out infinite;transform-box:fill-box}
+.bob.b2{animation-delay:-.7s}.bob.b3{animation-delay:-1.4s}.bob.b4{animation-delay:-2s}
+.lupa{animation:lupa 2.2s ease-in-out infinite;transform-origin:96px 66px;transform-box:view-box}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes lupa{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(10deg)}}
+@media (prefers-reduced-motion:reduce){.bob,.lupa{animation:none}}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start}
+.passos{background:#0b5d57;color:#fff;border-radius:8px;padding:16px}
+.passos h2{font:700 17px var(--f-display);margin:0 0 4px}
+.passos p{margin:0 0 12px;font-size:13px;opacity:.92}
+.passos ol{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.passos li{display:flex;gap:10px;align-items:flex-start;font-size:13px}
+.passos li b{flex:none;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;font:500 11px var(--f-mono)}
+.passos li.feito b{background:#fff;color:var(--accent)}
+.passos li.feito span{opacity:.75;text-decoration:line-through}
+.btn{display:block;margin-top:14px;text-align:center;background:#fff;color:#0b5d57;font:600 13px var(--f-body);border:0;border-radius:6px;padding:9px 12px;width:100%;cursor:pointer}
+.btn:focus-visible,.card:focus-visible,.acao:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;min-width:0}
+.col{background:var(--col);border-radius:8px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.col h2{font:600 13px var(--f-display);margin:0 2px 2px;display:flex;justify-content:space-between;align-items:center;text-transform:uppercase;letter-spacing:.05em}
+.col h2 span{font:500 12px var(--f-mono);color:var(--muted);letter-spacing:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px;display:flex;flex-direction:column;gap:7px;min-width:0;text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
+.card .org{font:600 12px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.03em;overflow-wrap:anywhere}
+.card .obj{font-weight:500;font-size:13.5px;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12px;color:var(--muted)}
+.valor{font:500 13px var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.pill{font:500 11px var(--f-mono);border-radius:999px;padding:2px 8px;background:var(--accent-soft);color:var(--accent)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.acoes{display:flex;gap:6px;margin-top:2px}
+.acao{flex:1;font:500 12px var(--f-body);border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:6px 8px;cursor:pointer}
+.acao.prim{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.vazio{border:1px dashed var(--line);border-radius:8px;padding:14px 10px;color:var(--muted);font-size:12.5px;text-align:center}
+.mais{font:500 12px var(--f-mono);color:var(--muted);text-align:center;padding:4px}
+footer{margin-top:20px;color:var(--muted);font-size:12px}
+
+@media (max-width:1060px){.main{grid-template-columns:1fr}.passos{order:-1}.kanban{grid-template-columns:repeat(2,minmax(0,1fr))}.time{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.kanban{grid-template-columns:1fr}.time{gap:8px}.info{padding:8px 10px 10px}.agente p{display:none}.empresa{margin-left:0;align-items:flex-start}}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.tools input[type=search],.tools select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-width:0}
+.tools input[type=search]{flex:1 1 180px}
+.chip{font:500 12px var(--f-mono);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 10px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn2{font:500 13px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:7px 12px;cursor:pointer}
+.btn2.prim{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn2:focus-visible,.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sp{margin-left:auto}
+.card{cursor:pointer}
+.acao{text-align:center}
+.mais{cursor:pointer;background:transparent;border:1px dashed var(--line);border-radius:6px;color:var(--muted)}
+.fonte{font-size:12px;color:var(--muted);margin:0 0 10px}
+.fonte.erro{color:var(--warn)}
+/* gaveta */
+.veu{position:fixed;inset:0;background:rgba(5,12,15,.5);z-index:20}
+.gaveta{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);z-index:21;overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 16px;border-left:1px solid var(--line)}
+.gaveta h2{font:700 19px/1.2 var(--f-display);margin:8px 0 4px;text-wrap:balance}
+.gaveta h3{font:600 12px var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:20px 0 8px}
+.fechar{float:right}
+.bloco{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;gap:8px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;overflow-wrap:anywhere}
+.item{border-top:1px solid var(--line);padding-top:8px;font-size:13px}
+.item:first-child{border-top:0;padding-top:0}
+.cit{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.sev{font:500 11px var(--f-mono);border-radius:4px;padding:1px 6px;margin-right:6px;text-transform:uppercase}
+.sev.alta{background:var(--warn-soft);color:var(--warn)}.sev.media{background:var(--accent-soft);color:var(--accent)}.sev.baixa{background:var(--ok-soft);color:var(--ok)}
+.rec{font-weight:600}
+.lacuna{color:var(--muted);font-size:13px;margin:0;padding-left:18px}
+.ok{color:var(--ok)}.falta{color:var(--warn)}
+.aviso{background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:8px 10px;font-size:12.5px}
+.decl{border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.decl summary{padding:10px 12px;cursor:pointer;font-weight:500;font-size:13.5px}
+.decl pre{white-space:pre-wrap;font:12.5px/1.5 var(--f-body);margin:0;padding:0 12px 12px}
+.decl .acoes{padding:0 12px 12px}
+/* modal */
+.modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(5,12,15,.55);padding:16px}
+.modal>div{background:var(--bg);border:1px solid var(--line);border-radius:10px;width:min(640px,100%);max-height:calc(100% - 16px);overflow:auto;padding:16px}
+.modal h2{font:700 18px var(--f-display);margin:0 0 12px}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.form label{display:grid;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+.form label.l{grid-column:1/-1}
+.form input,.form select{font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
+.docrow{display:grid;grid-template-columns:minmax(0,1fr) 140px auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.docrow:first-of-type{border-top:0}
+.docrow small{color:var(--muted);display:block}
+.docrow input{font:13px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
+@media(max-width:560px){.form{grid-template-columns:1fr}.docrow{grid-template-columns:1fr 1fr}.docrow>:last-child{grid-column:1/-1}.kv{grid-template-columns:1fr}}
+[hidden]{display:none!important}
+html{color-scheme:light}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="piso" viewBox="0 0 160 170"><polygon class="piso-l" points="0,120 80,160 80,170 0,130"/><polygon class="piso-r" points="80,160 160,120 160,130 80,170"/><polygon class="piso-t" points="0,120 80,80 160,120 80,160"/></symbol><symbol id="mesa" viewBox="0 0 160 170"><polygon class="mesa-l" points="38,86 80,107 80,127 38,106"/><polygon class="mesa-r" points="80,107 122,86 122,106 80,127"/><polygon class="mesa-t" points="38,86 80,65 122,86 80,107"/></symbol></defs></svg>
+
+<div class="wrap">
+<header>
+  <div class="brand"><i></i>Time de Licitações</div>
+  <button class="btn2 sp" type="button" data-abrir-modal="cofre">Cofre de documentos</button>
+  <button class="btn2" type="button" data-abrir-modal="empresa">Dados da empresa</button>
+</header>
+<div class="live"><h2>Escritório ao vivo</h2><span class="st">4 agentes online</span></div>
+<section class="time" aria-label="Agentes">
+<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Farejador"><use href="#piso"/><g class="bob "><rect x="65" y="42" width="30" height="36" rx="9" fill="#2a8f86"/><circle cx="80" cy="30" r="11" fill="#e8b48f"/>
+<path d="M69 30A11 11 0 0 1 91 30Z" fill="#3b2a20"/>
+<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><g class="lupa"><line x1="94" y1="62" x2="104" y2="48" stroke="#2a8f86" stroke-width="6" stroke-linecap="round"/><circle cx="108" cy="42" r="8" fill="none" stroke="#14232b" stroke-width="2.6"/><line x1="102" y1="48" x2="97" y2="56" stroke="#14232b" stroke-width="2.6" stroke-linecap="round"/></g><circle cx="68" cy="86" r="3.6" fill="#e8b48f"/><circle cx="92" cy="86" r="3.6" fill="#e8b48f"/></svg></div><div class="info"><h3>Farejador <span class="st">trabalhando</span></h3><p>Busca no PNCP e filtra pelo seu perfil.</p><div class="num" id="n-fare">—</div></div></div>
+<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Analista"><use href="#piso"/><g class="bob b2"><rect x="65" y="42" width="30" height="36" rx="9" fill="#5b6bd6"/><circle cx="80" cy="30" r="11" fill="#c98a5e"/>
+<path d="M69 30A11 11 0 0 1 91 30Z" fill="#1c1511"/>
+<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/><circle cx="76" cy="31.5" r="4" fill="none" stroke="#14232b" stroke-width="1.2"/><circle cx="84" cy="31.5" r="4" fill="none" stroke="#14232b" stroke-width="1.2"/></g><use href="#mesa"/><polygon class="papel" points="62,92 80,83 98,92 80,101"/><line x1="68" y1="92" x2="80" y2="86.5" stroke="#5b6bd6" stroke-width="1.6"/><line x1="72" y1="95" x2="88" y2="87" stroke="#9aa5ad" stroke-width="1.2"/><circle cx="68" cy="86" r="3.6" fill="#c98a5e"/><circle cx="92" cy="86" r="3.6" fill="#c98a5e"/></svg></div><div class="info"><h3>Analista <span class="st idle">aguardando</span></h3><p>Lê o edital e aponta prazos, multas e exigências.</p><div class="num" id="n-anal">—</div></div></div>
+<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Despachante"><use href="#piso"/><g class="bob b3"><rect x="65" y="42" width="30" height="36" rx="9" fill="#d38a1f"/><circle cx="80" cy="30" r="11" fill="#f0c8a3"/>
+<path d="M69 30A11 11 0 0 1 91 30Z" fill="#8a4b1c"/>
+<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><polygon points="82,93 100,84 114,91 96,100" fill="#e9b34a"/><polygon points="82,93 90,89 94,91 86,95" fill="#f2c96d"/><rect x="60" y="86" width="10" height="5" rx="1" fill="#14232b"/><circle cx="68" cy="86" r="3.6" fill="#f0c8a3"/><circle cx="92" cy="86" r="3.6" fill="#f0c8a3"/></svg></div><div class="info"><h3>Despachante <span class="st idle">aguardando</span></h3><p>Confere certidões e documentos de habilitação.</p><div class="num" id="n-desp">—</div></div></div>
+<div class="agente"><div class="cena"><svg viewBox="0 0 160 170" role="img" aria-label="Redator"><use href="#piso"/><g class="bob b4"><rect x="65" y="42" width="30" height="36" rx="9" fill="#c2527a"/><circle cx="80" cy="30" r="11" fill="#a8693f"/>
+<path d="M69 30A11 11 0 0 1 91 30Z" fill="#14100d"/>
+<circle cx="76" cy="32" r="1.4" fill="#2b1d14"/><circle cx="84" cy="32" r="1.4" fill="#2b1d14"/></g><use href="#mesa"/><polygon class="papel" points="62,92 80,83 98,92 80,101"/><line x1="68" y1="92" x2="80" y2="86.5" stroke="#9aa5ad" stroke-width="1.2"/><line x1="72" y1="95" x2="88" y2="87" stroke="#9aa5ad" stroke-width="1.2"/><line x1="92" y1="80" x2="100" y2="94" stroke="#e9b34a" stroke-width="2.6" stroke-linecap="round"/><circle cx="68" cy="86" r="3.6" fill="#a8693f"/><circle cx="92" cy="86" r="3.6" fill="#a8693f"/></svg></div><div class="info"><h3>Redator <span class="st idle">aguardando</span></h3><p>Monta proposta e declarações obrigatórias.</p><div class="num" id="n-red">—</div></div></div>
+</section>
+<div class="main">
+  <div style="min-width:0">
+    <p class="fonte" id="fonte">Carregando oportunidades…</p>
+    <div class="tools"><input type="search" id="busca" placeholder="Buscar por objeto, órgão ou cidade" aria-label="Buscar"><select id="ordem" aria-label="Ordenar"><option value="relevancia">Mais relevantes</option><option value="prazo">Prazo mais próximo</option></select></div>
+    <div class="tools" id="ufs" aria-label="Filtrar por estado"></div>
+    <section class="kanban" id="kanban" aria-label="Oportunidades"></section>
+  </div>
+  <aside class="passos" aria-label="Primeiros passos">
+    <h2>Primeiros passos</h2><p>Quatro passos até a primeira proposta.</p>
+    <ol id="passos"></ol>
+    <button class="btn" type="button" id="passos-btn" hidden></button>
+  </aside>
+</div>
+<footer>Fonte dos editais: PNCP. As análises e os modelos de declaração são apoio e não substituem a revisão de um advogado especialista em licitações. Dados da empresa e do cofre ficam só neste navegador.</footer>
+</div>
+<div class="veu" id="veu" hidden data-fechar></div>
+<aside class="gaveta" id="gaveta" hidden tabindex="-1" aria-label="Detalhes da oportunidade"></aside>
+<div class="modal" id="modal" hidden></div>
+<script>
+const SB_URL = "https://qywemhkqrpjtrcdorxub.supabase.co";
+const SB_KEY = "sb_publishable__ck00oz4LaKprpGUyYb6ag_sNO-oRoO"; // chave pública; o RLS só permite leitura
+const SNAPSHOT = /*SNAPSHOT*/null;
+const COLS = [["farejadas","Farejadas"],["analise","Em análise"],["participar","Participar"],["descartadas","Descartadas"]];
+const GRUPOS = {fiscal_trabalhista:"Regularidade fiscal e trabalhista",tecnica:"Qualificação técnica",economico_financeira:"Econômico-financeira",juridica:"Habilitação jurídica"};
+const DOCS_PADRAO = [
+  ["Cartão CNPJ","juridica"],["Contrato social consolidado","juridica"],
+  ["Certidão conjunta RFB/PGFN","fiscal_trabalhista"],["CND trabalhista (CNDT)","fiscal_trabalhista"],["CRF do FGTS","fiscal_trabalhista"],
+  ["Certidão negativa de falência","economico_financeira"],["Balanço patrimonial e DRE","economico_financeira"],
+  ["Atestado de capacidade técnica","tecnica"]];
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const brl = v => v == null ? "valor sigiloso" : Number(v).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const hoje = () => new Date(new Date().toDateString());
+
+let S = {ops:[], analises:{}, fonte:"", col:{}, empresa:{}, docs:[], uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}};
+try { const j = JSON.parse(localStorage.getItem("tl_v1")||"null"); if (j) Object.assign(S, {col:j.col||{}, empresa:j.empresa||{}, docs:j.docs||[]}); } catch(e){}
+const salvar = () => { try { localStorage.setItem("tl_v1", JSON.stringify({col:S.col, empresa:S.empresa, docs:S.docs})); } catch(e){} };
+
+async function carregar() {
+  const h = {apikey:SB_KEY, "Accept-Profile":"licitacoes"};
+  try {
+    const [a, b] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/oportunidades?select=*&limit=1000`, {headers:h}),
+      fetch(`${SB_URL}/rest/v1/analises?select=*`, {headers:h})]);
+    if (!a.ok || !b.ok) throw new Error("HTTP " + a.status);
+    S.ops = await a.json();
+    S.analises = Object.fromEntries((await b.json()).map(x => [x.id, x.dados]));
+    S.fonte = "Dados ao vivo do banco";
+  } catch (e) {
+    if (!SNAPSHOT) { S.fonte = "Sem conexão com o banco e sem cópia local"; S.erro = true; return; }
+    S.ops = SNAPSHOT.oportunidades; S.analises = SNAPSHOT.analises || {};
+    S.fonte = "Cópia de " + SNAPSHOT.data + " (sem conexão com o banco)";
+  }
+}
+
+const diasPara = iso => iso ? Math.ceil((new Date(iso) - new Date()) / 864e5) : null;
+const rotuloPrazo = d => d == null ? "sem prazo" : d < 0 ? "encerrada" : d === 0 ? "encerra hoje" : d === 1 ? "encerra amanhã" : `encerra em ${d} dias`;
+const colDe = o => S.col[o.id] || "farejadas";
+const vigente = o => !o.encerramento_proposta || diasPara(o.encerramento_proposta) >= 0;
+
+function filtradas(col) {
+  const q = S.q.trim().toLowerCase();
+  let r = S.ops.filter(o => colDe(o) === col && (col !== "farejadas" || vigente(o)) &&
+    (!S.uf || o.uf === S.uf) && (!q || (o.objeto + " " + o.orgao + " " + (o.municipio||"")).toLowerCase().includes(q)));
+  r.sort(S.ordem === "prazo"
+    ? (a,b) => (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9")
+    : (a,b) => b.pontuacao - a.pontuacao || (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9"));
+  return r;
+}
+
+function statusDoc(d) {
+  if (!d.validade) return "ok";
+  const n = Math.ceil((new Date(d.validade) - new Date()) / 864e5);
+  return n < 0 ? "vencida" : n <= 30 ? "vence" : "ok";
+}
+
+function card(o) {
+  const d = diasPara(o.encerramento_proposta), c = colDe(o);
+  const bt = {
+    farejadas: [["descartadas","Descartar"],["analise","Analisar",1]],
+    analise: [["descartadas","Descartar"],["participar","Participar",1]],
+    participar: [["analise","Voltar"],["descartadas","Descartar"]],
+    descartadas: [["farejadas","Restaurar",1]]}[c];
+  return `<div class="card" role="button" tabindex="0" data-abrir="${esc(o.id)}">
+    <div class="org">${esc(o.uf)} · ${esc(o.orgao)}</div>
+    <div class="obj">${esc(o.objeto)}</div>
+    <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade||"")}</span></div>
+    <div class="meta"><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span><span class="pill">${o.pontuacao} pts</span>${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}</div>
+    <div class="acoes">${bt.map(([to,t,p]) => `<button type="button" class="acao ${p?"prim":""}" data-mover="${esc(o.id)}" data-to="${to}">${t}</button>`).join("")}</div></div>`;
+}
+
+function render() {
+  const tem = S.ops.length;
+  $("#fonte").textContent = tem ? `${S.fonte} · ${tem} oportunidades` : S.fonte;
+  $("#fonte").className = "fonte" + (S.erro ? " erro" : "");
+  const ufs = [...new Set(S.ops.map(o => o.uf).filter(Boolean))].sort();
+  $("#ufs").innerHTML = `<button class="chip" type="button" aria-pressed="${!S.uf}" data-uf="">Todos</button>` + ufs.map(u => `<button class="chip" type="button" aria-pressed="${S.uf===u}" data-uf="${u}">${u}</button>`).join("");
+  $("#kanban").innerHTML = COLS.map(([k,t]) => {
+    const l = filtradas(k), lim = S.limite[k] || 50, vis = l.slice(0, lim);
+    const vazio = {farejadas:"Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
+    return `<div class="col"><h2>${t} <span>${l.length}</span></h2>${vis.map(card).join("") || `<div class="vazio">${vazio}</div>`}${l.length > lim ? `<button class="mais" type="button" data-mais="${k}">Mostrar mais ${Math.min(20, l.length-lim)}</button>` : ""}</div>`;
+  }).join("");
+  renderAgentes(); renderPassos();
+}
+
+function renderAgentes() {
+  const anal = Object.keys(S.analises).length, venc = S.docs.filter(d => statusDoc(d) !== "ok").length;
+  $("#n-fare").textContent = `${S.ops.filter(vigente).length} abertas`;
+  $("#n-anal").textContent = `${anal} análise${anal===1?"":"s"} pronta${anal===1?"":"s"}`;
+  $("#n-desp").textContent = S.docs.length ? `${S.docs.length} documentos${venc ? " · " + venc + " pedem atenção" : ""}` : "cofre vazio";
+  const part = S.ops.filter(o => colDe(o) === "participar").length;
+  $("#n-red").textContent = `${part} para preparar`;
+}
+
+function renderPassos() {
+  const e = S.empresa, p = [
+    [e.razao && e.cnpj, "Cadastrar os dados da empresa", "empresa"],
+    [S.docs.length > 0, "Cadastrar certidões no cofre de documentos", "cofre"],
+    [S.ops.some(o => colDe(o) !== "farejadas"), "Escolher uma oportunidade e clicar em Analisar", null],
+    [S.ops.some(o => colDe(o) === "participar"), "Revisar o rascunho da proposta antes de enviar", null]];
+  const prox = p.find(x => !x[0]);
+  $("#passos").innerHTML = p.map((x,i) => `<li class="${x[0]?"feito":""}"><b>${x[0]?"✓":i+1}</b><span>${x[1]}</span></li>`).join("");
+  const b = $("#passos-btn");
+  b.hidden = !prox || !prox[2]; if (prox && prox[2]) { b.textContent = prox[2]==="empresa" ? "Cadastrar a empresa" : "Abrir o cofre de documentos"; b.dataset.abrirModal = prox[2]; }
+}
+
+/* ---------- gaveta ---------- */
+function habilitacaoStatus(grupo) {
+  const ds = S.docs.filter(d => d.grupo === grupo);
+  if (!ds.length) return ["falta","sem documento no cofre"];
+  if (ds.some(d => statusDoc(d) === "ok")) return ["ok","documento no cofre, dentro da validade"];
+  if (ds.some(d => statusDoc(d) === "vence")) return ["falta","documento vence em menos de 30 dias"];
+  return ["falta","documento vencido"];
+}
+
+function declaracoes(o) {
+  const e = S.empresa, nome = e.razao || "[RAZÃO SOCIAL]", cnpj = e.cnpj || "[CNPJ]", rep = e.rep || "[REPRESENTANTE LEGAL]", cpf = e.cpf || "[CPF]";
+  const lic = `${o.modalidade || "Licitação"} nº ${o.numero_compra || "[Nº]"}/${o.ano || "[ANO]"} — ${o.orgao}`;
+  const cab = `${lic}\n\nA empresa ${nome}, inscrita no CNPJ ${cnpj}${e.end ? ", com sede em " + e.end : ""}, por intermédio de seu representante legal, ${rep}, CPF ${cpf}, `;
+  const fim = `\n\n[Local], [data].\n\n______________________________\n${rep}\n${e.cargo || "[Cargo]"}`;
+  const l = [
+    ["Declaração de cumprimento dos requisitos de habilitação", cab + "DECLARA, sob as penas da lei, que cumpre plenamente os requisitos de habilitação exigidos no edital e que os documentos apresentados são verdadeiros (Lei nº 14.133/2021, art. 63, I)." + fim],
+    ["Declaração de inexistência de fato impeditivo", cab + "DECLARA, sob as penas da lei, que não existe fato impeditivo para participar desta licitação e que não está impedida de licitar ou contratar com a Administração Pública, comprometendo-se a comunicar qualquer ocorrência superveniente." + fim],
+    ["Declaração de trabalho de menores", cab + "DECLARA, para fins do art. 7º, XXXIII, da Constituição Federal, que não emprega menor de 18 anos em trabalho noturno, perigoso ou insalubre, nem menor de 16 anos em qualquer trabalho, salvo na condição de aprendiz, a partir de 14 anos." + fim],
+    ["Declaração de elaboração independente de proposta", cab + "DECLARA que a proposta foi elaborada de forma independente, sem consulta, comunicação ou acordo com qualquer outro licitante, e que seu conteúdo não foi informado a terceiros antes da abertura da sessão." + fim],
+    ["Declaração de reserva de cargos para pessoa com deficiência", cab + "DECLARA, para fins do art. 63, IV, da Lei nº 14.133/2021, que cumpre as exigências de reserva de cargos para pessoa com deficiência e para reabilitado da Previdência Social, previstas em lei." + fim]];
+  if (/^(me|epp)$/i.test(e.porte || "")) l.push(["Declaração de enquadramento como ME/EPP", cab + `DECLARA, sob as penas da lei, que se enquadra como ${e.porte.toUpperCase()} nos termos da Lei Complementar nº 123/2006 e que não incorre em nenhuma das vedações do art. 3º, § 4º, da mesma lei.` + fim]);
+  return l;
+}
+
+function gaveta(id) {
+  const o = S.ops.find(x => x.id === id); if (!o) return;
+  const a = S.analises[id], d = diasPara(o.encerramento_proposta), c = colDe(o);
+  const hab = a ? a.habilitacao : DOCS_PADRAO.map(([t,g]) => ({grupo:g, exigencia:t}));
+  let h = `<button class="btn2 fechar" type="button" data-fechar>Fechar</button>
+    <div class="org tag">${esc(o.uf)} · ${esc(o.municipio||"")}</div><h2>${esc(o.objeto)}</h2><div class="meta">${esc(o.orgao)}</div>
+    <h3>Oportunidade</h3><dl class="bloco kv">
+      <dt>Valor estimado</dt><dd>${esc(brl(o.valor_estimado))}${a && a.valor_estimado_edital ? " · no edital: " + esc(brl(a.valor_estimado_edital)) : ""}</dd>
+      <dt>Modalidade</dt><dd>${esc(o.modalidade||"")}</dd>
+      <dt>Propostas até</dt><dd>${o.encerramento_proposta ? new Date(o.encerramento_proposta).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short",timeZone:"America/Sao_Paulo"}) : "—"} (${rotuloPrazo(d)})</dd>
+      <dt>Processo</dt><dd>${esc(o.processo||"—")}</dd>
+      <dt>Termos achados</dt><dd>${esc((o.palavras||[]).join(", "))}</dd>
+      <dt>Edital</dt><dd>${o.arquivos_api ? `<a href="${esc(o.arquivos_api)}" target="_blank" rel="noopener">Arquivos no PNCP</a>` : ""}${o.link_origem ? ` · <a href="${esc(o.link_origem)}" target="_blank" rel="noopener">Sistema de origem</a>` : ""}</dd></dl>
+    <div class="acoes" style="margin-top:10px">${c!=="analise"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="analise" data-fechar>Mover para Em análise</button>`:""}${c!=="participar"?`<button class="acao prim" type="button" data-mover="${esc(id)}" data-to="participar" data-fechar>Participar</button>`:""}${c!=="descartadas"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="descartadas" data-fechar>Descartar</button>`:""}</div>`;
+
+  h += `<h3>Analista</h3>`;
+  if (a) {
+    const rec = {participar:"Participar", participar_com_ressalvas:"Participar com ressalvas", nao_participar:"Não participar"}[a.recomendacao] || a.recomendacao;
+    h += `<div class="bloco"><div><span class="rec">${esc(rec)}.</span> ${esc(a.motivo_recomendacao||"")}</div>
+      ${a.gerado_por ? `<div class="aviso">${esc(a.gerado_por)}</div>` : ""}
+      ${a.riscos?.length ? `<div><b>Riscos</b></div>` + a.riscos.map(r => `<div class="item"><span class="sev ${esc(r.gravidade)}">${esc(r.gravidade)}</span>${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
+      ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
+  } else {
+    h += `<div class="bloco"><div class="vazio" style="border:0;padding:6px 0">Esta oportunidade ainda não foi analisada. A leitura automática do edital em PDF será ligada na próxima etapa. Por enquanto, abra o edital pelo link acima.</div></div>`;
+  }
+
+  h += `<h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
+    hab.map(x => { const [st, msg] = habilitacaoStatus(x.grupo); return `<div class="item"><span class="${st}">${st==="ok"?"✓":"!"}</span> <b>${esc(GRUPOS[x.grupo]||x.grupo)}:</b> ${esc(x.exigencia)}<span class="cit" style="display:block">${esc(msg)}${x.pagina ? " · edital p. " + esc(x.pagina) : ""}</span></div>`; }).join("") +
+    `<div><button class="btn2" type="button" data-abrir-modal="cofre">Abrir o cofre de documentos</button></div></div>`;
+
+  h += `<h3>Redator · rascunhos</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${S.empresa.razao ? "" : " Cadastre os dados da empresa para preencher automaticamente."}</div>` +
+    declaracoes(o).map((x,i) => `<details class="decl"><summary>${esc(x[0])}</summary><pre id="decl${i}">${esc(x[1])}</pre><div class="acoes"><button class="acao" type="button" data-copiar="decl${i}">Copiar texto</button></div></details>`).join("") + `</div>`;
+
+  $("#gaveta").innerHTML = h; $("#veu").hidden = false; $("#gaveta").hidden = false; $("#gaveta").scrollTop = 0; $("#gaveta").focus();
+}
+const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; };
+
+/* ---------- modais ---------- */
+function modalEmpresa() {
+  const e = S.empresa, f = (k, t, cls="") => `<label class="${cls}">${t}<input id="e_${k}" value="${esc(e[k]||"")}"></label>`;
+  $("#modal").innerHTML = `<div><h2>Dados da empresa</h2><p class="fonte">Ficam só neste navegador e preenchem as declarações do Redator.</p><div class="form">
+    ${f("razao","Razão social","l")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte===p?"selected":""}>${p}</option>`).join("")}</select></label>
+    ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div>
+    <div class="acoes" style="margin-top:14px"><button class="btn2" type="button" data-fechar-modal>Cancelar</button><button class="btn2 prim" type="button" data-salvar-empresa>Salvar</button></div></div>`;
+  $("#modal").hidden = false; $("#e_razao").focus();
+}
+function modalCofre() {
+  const rows = S.docs.map((d,i) => { const st = statusDoc(d); return `<div class="docrow"><div>${esc(d.nome)}<small>${esc(GRUPOS[d.grupo]||"")} · <span class="${st==="ok"?"ok":"falta"}">${{ok:"em dia",vence:"vence em até 30 dias",vencida:"vencida"}[st]}</span></small></div>
+    <input type="date" value="${esc(d.validade||"")}" data-validade="${i}" aria-label="Validade de ${esc(d.nome)}"><button class="acao" type="button" data-remover-doc="${i}">Remover</button></div>`; }).join("");
+  const faltam = DOCS_PADRAO.filter(([n]) => !S.docs.some(d => d.nome === n));
+  $("#modal").innerHTML = `<div><h2>Cofre de documentos</h2><p class="fonte">Cadastre o nome e a validade. Os arquivos em si não são enviados a lugar nenhum.</p>
+    ${rows || `<div class="vazio">Nenhum documento ainda. Adicione abaixo as certidões que costumam ser exigidas.</div>`}
+    ${faltam.length ? `<div class="form" style="margin-top:12px;grid-template-columns:1fr auto"><label>Adicionar documento<select id="novo_doc">${faltam.map(([n,g]) => `<option value="${esc(n)}|${g}">${esc(n)}</option>`).join("")}</select></label><button class="btn2 prim" type="button" data-add-doc style="align-self:end">Adicionar</button></div>` : ""}
+    <div class="acoes" style="margin-top:14px"><button class="btn2 prim" type="button" data-fechar-modal>Concluir</button></div></div>`;
+  $("#modal").hidden = false;
+}
+const fecharModal = () => { $("#modal").hidden = true; render(); const g = $("#gaveta"); if (!g.hidden && S.aberta) gaveta(S.aberta); };
+
+/* ---------- eventos ---------- */
+document.addEventListener("click", ev => {
+  const t = ev.target.closest("button,[data-abrir],a,summary"); if (!t) return;
+  const D = t.dataset;
+  if (D.mover) { ev.stopPropagation(); S.col[D.mover] = D.to; salvar(); if ("fechar" in D) fecharGaveta(); render(); return; }
+  if (D.abrir && t.tagName !== "BUTTON") { S.aberta = D.abrir; gaveta(D.abrir); return; }
+  if ("fechar" in D) { S.aberta = null; fecharGaveta(); return; }
+  if (D.uf !== undefined) { S.uf = D.uf; render(); return; }
+  if (D.mais) { S.limite[D.mais] = (S.limite[D.mais]||20) + 20; render(); return; }
+  if (D.abrirModal === "empresa") return modalEmpresa();
+  if (D.abrirModal === "cofre") return modalCofre();
+  if ("fecharModal" in D) return fecharModal();
+  if ("salvarEmpresa" in D) { for (const k of ["razao","cnpj","end","rep","cargo","cpf","porte"]) S.empresa[k] = $("#e_"+k).value.trim(); salvar(); return fecharModal(); }
+  if ("addDoc" in D) { const [nome, grupo] = $("#novo_doc").value.split("|"); S.docs.push({nome, grupo, validade:""}); salvar(); return modalCofre(); }
+  if (D.removerDoc) { S.docs.splice(+D.removerDoc, 1); salvar(); return modalCofre(); }
+  if (D.copiar) { const txt = $("#"+D.copiar).textContent; (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => t.textContent = "Copiado", () => { const r = document.createRange(); r.selectNodeContents($("#"+D.copiar)); getSelection().removeAllRanges(); getSelection().addRange(r); t.textContent = "Selecionado: use Ctrl+C"; }); return; }
+});
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape") { if (!$("#modal").hidden) fecharModal(); else if (!$("#gaveta").hidden) { S.aberta = null; fecharGaveta(); } }
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".card")) { ev.preventDefault(); S.aberta = ev.target.dataset.abrir; gaveta(S.aberta); }
+});
+document.addEventListener("change", ev => {
+  if (ev.target.dataset.validade !== undefined) { S.docs[+ev.target.dataset.validade].validade = ev.target.value; salvar(); modalCofre(); }
+  if (ev.target.id === "ordem") { S.ordem = ev.target.value; render(); }
+});
+$("#busca").addEventListener("input", ev => { S.q = ev.target.value; render(); });
+
+(async () => { render(); await carregar(); render(); })();
+
+</script>
