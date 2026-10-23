@@ -231,6 +231,9 @@ section.painel{margin-top:14px}.emp-grid section.painel{margin-top:0}
 .chip.uf{padding:5px 9px;min-width:44px;text-align:center}
 .chip.uf b{margin-left:4px}
 .chip.reg{border-style:dashed}
+.semb{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-top:12px}
+.semb div{display:grid;gap:2px;min-width:0}
+.semb span{color:var(--muted);font-size:13px}
 
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
@@ -389,10 +392,19 @@ function novaEmpresa(dados = {}) {
   S.empresas.push(e); S.empId = e.id; S.areaSel = null; S.res[e.id] = null; recomporOps(); return e;
 }
 
-function recomporOps() {   // base (banco ou cópia) + o que o Farejador achou para a empresa ativa
-  const r = S.res[S.empId], m = new Map(S.base.map(o => [o.id, o]));
-  if (r) for (const o of r.itens) m.set(o.id, o);
-  S.ops = [...m.values()]; _memo.k = "";
+function recomporOps() {   // só o que o Farejador buscou para a empresa ativa (ou a demonstração, se o usuário pedir)
+  const r = S.res[S.empId];
+  S.ops = S.demo && SNAPSHOT ? SNAPSHOT.oportunidades : (r ? r.itens : []); _memo.k = "";
+}
+function fonteTexto() {
+  const r = S.res[S.empId];
+  return S.demo ? "Demonstração: dados de exemplo, não são desta empresa" : r ? "Última busca do Farejador em " + fmtData(r.quando) : "Nenhuma busca feita para esta empresa";
+}
+function buscaDesatualizada() {   // atividades ou estados mudaram depois da última busca
+  const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo) return false;
+  const termos = new Set((r.termos || []).map(norm));
+  const novos = e.areas.filter(a => a.ativa).flatMap(a => a.termos).some(t => !termos.has(norm(t)));
+  return novos || e.ufs.some(u => !(r.ufs || []).includes(u));
 }
 let _memo = {k:"", v:[]};
 function casados() {            // oportunidades que casam com as atividades da empresa ativa, com as palavras que casaram
@@ -431,27 +443,12 @@ function contagemPorArea() {     // quantas licitações abertas casam com cada 
 }
 
 /* ---------- carregamento ---------- */
-let _carregando = null, _chaveDB = "";
-async function carregar(forcar) {
-  const e = emp(), termos = [...new Set((e?.areas || []).filter(a => a.ativa).flatMap(a => a.termos))];
-  const chave = termos.join("|");
-  if (!forcar && _chaveDB === chave && S.base.length) return;
-  _chaveDB = chave;
-  const h = {apikey:SB_KEY, "Accept-Profile":"licitacoes"};
-  const filtro = (termos.length ? "&or=(" + termos.map(t => "objeto.ilike.*" + encodeURIComponent(t.replace(/[(),*]/g, " ")) + "*").join(",") + ")" : "");
+async function carregar() {      // as oportunidades vêm só da busca da empresa; do banco lemos apenas as análises prontas
   try {
-    const q = `${SB_URL}/rest/v1/oportunidades?select=*&encerramento_proposta=gte.${encodeURIComponent(new Date().toISOString())}&order=encerramento_proposta.asc&limit=1000${filtro}`;
-    const [a, b] = await Promise.all([fetch(q, {headers:h}), fetch(`${SB_URL}/rest/v1/analises?select=*`, {headers:h})]);
-    if (!a.ok || !b.ok) throw new Error("HTTP " + a.status);
-    S.base = await a.json();
-    S.analises = Object.fromEntries((await b.json()).map(x => [x.id, x.dados]));
-    S.fonte = "Dados ao vivo do banco";
-  } catch (err) {
-    if (!SNAPSHOT) { S.fonte = "Sem conexão com o banco e sem cópia local"; S.erro = true; return; }
-    if (S.base === SNAPSHOT.oportunidades) { recomporOps(); return; }
-    S.base = SNAPSHOT.oportunidades; S.analises = SNAPSHOT.analises || {};
-    S.fonte = "Cópia de " + SNAPSHOT.data + " (sem conexão com o banco)";
-  }
+    const r = await fetch(`${SB_URL}/rest/v1/analises?select=*`, {headers:{apikey:SB_KEY, "Accept-Profile":"licitacoes"}});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    S.analises = Object.fromEntries((await r.json()).map(x => [x.id, x.dados]));
+  } catch (err) { S.analises = SNAPSHOT?.analises || S.analises || {}; }
   recomporOps();
 }
 
@@ -606,7 +603,7 @@ async function iniciarFarejador() {
   };
   try { await Promise.all([trabalhar(), trabalhar(), trabalhar()]); }
   catch (err) { f.erro = err.message || String(err); }
-  S.res[e.id] = {quando:new Date().toISOString(), ufs:[...e.ufs], itens:[...achadas.values()]};
+  S.res[e.id] = {quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], itens:[...achadas.values()]};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
   f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${achadas.size}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ${f.lidas} editais lidos, ${achadas.size} dentro das atividades da empresa.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
@@ -892,6 +889,11 @@ function modalAtividades() {
 }
 function renderModal() { const m = $("#modal"); if (S.modal === "ativ" && emp()) { m.innerHTML = modalAtividades(); m.hidden = false; } else { m.hidden = true; m.innerHTML = ""; } }
 
+function semBusca() {   // na tela inicial: sem botão do Farejador, só um aviso com o caminho
+  const e = emp(); if (!e || S.res[e.id] || S.demo) return "";
+  return `<section class="semb"><div><b>${esc(e.razao || "Esta empresa")} ainda não tem oportunidades carregadas.</b><span>As oportunidades de cada empresa vêm da busca do Farejador, feita na tela Oportunidades.</span></div><button class="btn2" type="button" data-view="oportunidades">Ir para Oportunidades</button></section>`;
+}
+
 function atividade(m) {
   const L = [], tag = (c, t) => `<span class="tagag" style="background:${c}">${t}</span>`, e = emp();
   L.push([tag("#2ec4b6","Farejador"), e && e.areas.some(a => a.ativa) ? `${m.abertas} oportunidades abertas${S.areaSel ? " nesta atividade" : " nas atividades da empresa"}; ${m.n7} encerram em até 7 dias.` : `${m.abertas} oportunidades abertas, sem filtro. Cadastre as atividades da empresa para eu filtrar.`]);
@@ -923,7 +925,7 @@ function viewInicio(m) {
     ["#ff6b9a","Redator","propostas",`${m.part} para preparar`,"Monta proposta e declarações obrigatórias."]];
   const prazos = m.prazos.map(o => { const d = diasPara(o.encerramento_proposta); return `<div class="lin"><span class="tag">${esc(o.uf)}</span><span class="o" title="${esc(o.objeto)}">${esc(o.orgao)}</span><span class="d ${d<=3?"hot":d<=7?"mid":"cool"}">${d===0?"hoje":d+" d"}</span></div>`; }).join("");
   const e = emp();
-  return empbar() + fzStrip() + `<div class="sala"><div class="hud"><span><span class="dot"></span>Escritório ao vivo</span><span><b>4/4</b> agentes em operação</span>${e ? `<span>${esc(e.razao || "Empresa sem nome")}${S.areaSel ? " · " + esc((e.areas.find(a => a.id === S.areaSel) || {}).nome || "") : ""}</span>` : ""}<span>${esc(S.fonte)}</span></div>
+  return empbar() + semBusca() + `<div class="sala"><div class="hud"><span><span class="dot"></span>Escritório ao vivo</span><span><b>4/4</b> agentes em operação</span>${e ? `<span>${esc(e.razao || "Empresa sem nome")}${S.areaSel ? " · " + esc((e.areas.find(a => a.id === S.areaSel) || {}).nome || "") : ""}</span>` : ""}<span>${esc(fonteTexto())}</span></div>
     <div class="cena-wrap"><svg viewBox="0 14 744 568" role="img" aria-label="Sala de controle com os quatro agentes em suas mesas">${sala(m)}</svg></div>
     <div class="agentes">${ag.map(a => `<button class="ag" type="button" data-view="${a[2]}" style="--c:${a[0]}"><b>${a[1]}</b><span>${a[4]}</span><em>${a[3]}</em></button>`).join("")}</div></div>
     <div class="paineis"><section class="painel"><h2>Prazos mais próximos</h2>${prazos || '<div class="vazio">Sem oportunidades abertas para este filtro.</div>'}</section>
@@ -934,13 +936,16 @@ function viewInicio(m) {
 function renderOport() {
   $("#empbar2").innerHTML = empbar() + fzStrip();
   const U = universo();
-  $("#fonte").textContent = `${S.fonte} · ${U.filter(vigente).length} oportunidades${emp() && emp().areas.some(a => a.ativa) ? " nas atividades da empresa" : ""}`;
-  $("#fonte").className = "fonte" + (S.erro ? " erro" : "");
+  const r = S.res[S.empId];
+  $("#fonte").innerHTML = esc(`${fonteTexto()} · ${U.filter(vigente).length} oportunidades`) + (S.demo ? ' <button class="lnk" type="button" data-demo-off>Sair da demonstração</button>' : "") +
+    (buscaDesatualizada() ? '<div class="aviso" style="margin-top:8px">As atividades ou os estados mudaram depois da última busca. Clique em Iniciar Farejador para buscar de novo.</div>' : "") +
+    (!r && !S.demo && SNAPSHOT && emp() ? ' <button class="lnk" type="button" data-demo>Ver dados de demonstração</button>' : "");
+  $("#fonte").className = "fonte";
   const ufs = [...new Set(U.map(o => o.uf).filter(Boolean))].sort();
   $("#ufs").innerHTML = `<button class="chip" type="button" aria-pressed="${!S.uf}" data-uf="">Todos os estados</button>` + ufs.map(u => `<button class="chip" type="button" aria-pressed="${S.uf===u}" data-uf="${u}">${u}</button>`).join("");
   $("#kanban").innerHTML = COLS.map(([k,t]) => {
     const l = filtradas(k), lim = S.limite[k] || 50, vis = l.slice(0, lim);
-    const vazio = {farejadas:"Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
+    const vazio = {farejadas:(!S.res[S.empId] && !S.demo) ? "Nenhuma oportunidade carregada para esta empresa. Clique em Iniciar Farejador." : "Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
     return `<div class="col"><h2>${t} <span>${l.length}</span></h2>${vis.map(card).join("") || `<div class="vazio">${vazio}</div>`}${l.length > lim ? `<button class="mais" type="button" data-mais="${k}">Mostrar mais ${Math.min(20, l.length-lim)}</button>` : ""}</div>`;
   }).join("");
 }
@@ -1021,8 +1026,8 @@ function irPara(v) {
   fecharGaveta(); render(); window.scrollTo(0, 0);
 }
 const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; S.aberta = null; };
-const mudouTermos = () => { _memo.k = ""; salvar(); carregar(true).then(render); render(); };
-const escolherEmpresa = id => { S.empId = id; S.areaSel = null; S.uf = ""; _memo.k = ""; salvar(); carregar(true).then(render); render(); };
+const mudouTermos = () => { _memo.k = ""; salvar(); render(); };
+const escolherEmpresa = id => { S.empId = id; S.areaSel = null; S.uf = ""; S.demo = false; recomporOps(); salvar(); render(); };
 
 /* ============ EVENTOS ============ */
 function lerForm() {   // só lê o formulário se ele está visível e é da empresa ativa (evita gravar dados de uma tela antiga)
@@ -1046,6 +1051,8 @@ function aoClicar(ev) {
   if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
   if ("buscarCnpj" in D) return buscarCnpj();
   if ("fzIniciar" in D) return iniciarFarejador();
+  if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
+  if ("demoOff" in D) { S.demo = false; recomporOps(); return render(); }
   if ("fzParar" in D) { S.fz.parar = true; S.fz.msg = "Parando… aguarde a página atual terminar."; return render(); }
   if ("ativAbrir" in D) { S.modal = "ativ"; S.ativAberta = null; return render(); }
   if ("ativFechar" in D) { S.modal = null; return render(); }
@@ -1105,6 +1112,6 @@ document.addEventListener("drop", ev => { const z = ev.target.closest?.(".drop")
 $("#busca").addEventListener("input", ev => { S.q = ev.target.value; renderOport(); });
 window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
 
-(async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; render(); await carregar(true); render(); })();
+(async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; recomporOps(); render(); await carregar(); render(); })();
 
 </script>
