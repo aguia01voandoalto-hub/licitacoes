@@ -225,6 +225,12 @@ section.painel{margin-top:14px}.emp-grid section.painel{margin-top:0}
 .ativ{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface2)}
 .ativ.off{opacity:.55}
 @media (max-width:900px){.fz{grid-template-columns:1fr}}
+.eb-uf{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.eb-d{font:500 11px var(--f-mono);color:var(--muted);letter-spacing:0;text-transform:none;margin-left:8px}
+.chips.ufs{gap:6px}
+.chip.uf{padding:5px 9px;min-width:44px;text-align:center}
+.chip.uf b{margin-left:4px}
+.chip.reg{border-style:dashed}
 
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
@@ -389,7 +395,7 @@ function recomporOps() {   // base (banco ou cópia) + o que o Farejador achou p
   S.ops = [...m.values()]; _memo.k = "";
 }
 let _memo = {k:"", v:[]};
-function universo() {            // oportunidades que interessam à empresa ativa, com as palavras que casaram
+function casados() {            // oportunidades que casam com as atividades da empresa ativa, com as palavras que casaram
   const e = emp(), areas = e ? e.areas.filter(a => a.ativa && (S.areaSel == null || a.id === S.areaSel)) : [];
   const termos = areas.flatMap(a => a.termos.map(t => [t, a.id])), evitar = (e?.evitar || []).map(norm).filter(Boolean);
   const k = [S.ops.length, S.ops[0]?.id, S.empId, S.areaSel, JSON.stringify(termos), evitar.join("|")].join("#");
@@ -407,6 +413,17 @@ function universo() {            // oportunidades que interessam à empresa ativ
   }
   _memo = {k, v}; return v;
 }
+let _memoU = {k:"", v:[]};
+function universo() {            // idem, restrito aos estados de interesse (nenhum marcado = todos)
+  const e = emp(), c = casados(), ufs = e?.ufs || [];
+  if (!ufs.length) return c;
+  const k = _memo.k + "#" + ufs.join(",");
+  if (_memoU.k === k) return _memoU.v;
+  _memoU = {k, v: c.filter(o => ufs.includes(o.uf))}; return _memoU.v;
+}
+function contagemPorUf() {       // licitações abertas por estado, dentro das atividades da empresa
+  const n = {}; for (const o of casados()) if (vigente(o) && o.uf) n[o.uf] = (n[o.uf] || 0) + 1; return n;
+}
 function contagemPorArea() {     // quantas licitações abertas casam com cada área ativa da empresa (sem o filtro de área)
   const e = emp(); if (!e) return [];
   const evitar = e.evitar.map(norm).filter(Boolean);
@@ -421,7 +438,7 @@ async function carregar(forcar) {
   if (!forcar && _chaveDB === chave && S.base.length) return;
   _chaveDB = chave;
   const h = {apikey:SB_KEY, "Accept-Profile":"licitacoes"};
-  const filtro = termos.length ? "&or=(" + termos.map(t => "objeto.ilike.*" + encodeURIComponent(t.replace(/[(),*]/g, " ")) + "*").join(",") + ")" : "";
+  const filtro = (termos.length ? "&or=(" + termos.map(t => "objeto.ilike.*" + encodeURIComponent(t.replace(/[(),*]/g, " ")) + "*").join(",") + ")" : "");
   try {
     const q = `${SB_URL}/rest/v1/oportunidades?select=*&encerramento_proposta=gte.${encodeURIComponent(new Date().toISOString())}&order=encerramento_proposta.asc&limit=1000${filtro}`;
     const [a, b] = await Promise.all([fetch(q, {headers:h}), fetch(`${SB_URL}/rest/v1/analises?select=*`, {headers:h})]);
@@ -826,7 +843,15 @@ function empbar() {
     <div class="eb-n">${esc(e.cnpj || "sem CNPJ")}${e.porte ? " · " + esc(e.porte) : ""}${e.cnaes.length ? " · " + e.cnaes.length + " CNAE" + (e.cnaes.length > 1 ? "s" : "") : ""}</div></div>
     <div class="eb-r"><span class="eb-k">Buscar dentro das atividades da empresa</span>
     <div class="chips"><button class="chip" type="button" aria-pressed="${S.areaSel == null}" data-area-sel="">Todas as atividades</button>${ch.map(({a, n}) => `<button class="chip" type="button" aria-pressed="${S.areaSel === a.id}" data-area-sel="${esc(a.id)}">${esc(a.nome)} <b>${n}</b></button>`).join("")}<button class="chip ghost" type="button" data-ativ-abrir>Editar atividades</button></div>
-    ${ch.length ? "" : '<div class="eb-n">Esta empresa ainda não tem áreas de busca. Importe o cartão CNPJ ou adicione áreas em Empresa.</div>'}</div></section>`;
+    ${ch.length ? "" : '<div class="eb-n">Esta empresa ainda não tem áreas de busca. Importe o cartão CNPJ ou adicione áreas em Empresa.</div>'}</div>${barraEstados(e)}</section>`;
+}
+const REGIOES = {Sul:["PR","SC","RS"], Sudeste:["SP","RJ","MG","ES"], "Centro-Oeste":["GO","MT","MS","DF"], Nordeste:["MA","PI","CE","RN","PB","PE","AL","SE","BA"], Norte:["AC","AP","AM","PA","RO","RR","TO"]};
+function barraEstados(e) {
+  const n = contagemPorUf(), sel = e.ufs, todos = sel.length === UFS.length;
+  return `<div class="eb-uf"><span class="eb-k">Estados de interesse <span class="eb-d">${sel.length ? sel.length + " selecionado" + (sel.length > 1 ? "s" : "") : "nenhum marcado: mostrando todos"}</span></span>
+    <div class="chips"><button class="chip" type="button" aria-pressed="${todos}" data-uf-all>Todos os estados</button>${Object.entries(REGIOES).map(([r, l]) => `<button class="chip reg" type="button" aria-pressed="${l.every(u => sel.includes(u))}" data-uf-reg="${r}">${r}</button>`).join("")}<button class="chip ghost" type="button" data-uf-none>Limpar</button></div>
+    <div class="chips ufs">${UFS.map(u => `<button class="chip uf" type="button" aria-pressed="${sel.includes(u)}" data-uf-emp="${u}">${u}${n[u] ? `<b>${n[u]}</b>` : ""}</button>`).join("")}</div>
+    ${sel.length ? "" : '<div class="eb-n">Marque os estados que interessam. O Farejador também busca só neles.</div>'}${sel.length > 8 ? '<div class="eb-n">Com muitos estados, a busca do Farejador leva vários minutos.</div>' : ""}</div>`;
 }
 
 function pctFz() {
@@ -1032,7 +1057,10 @@ function aoClicar(ev) {
   if ("addCnae" in D) { const c = digitos($("#novo_cnae").value); if (c.length >= 4 && !e.cnaes.some(x => x.codigo === c)) { e.cnaes.push({codigo:c, desc:"", principal:!e.cnaes.length}); const n = sugerirAreas(e); S.msg = n ? `${n} área${n > 1 ? "s" : ""} de busca adicionada${n > 1 ? "s" : ""} pelo CNAE.` : ""; mudouTermos(); } return; }
   if (D.remCnae) { e.cnaes.splice(+D.remCnae, 1); return mudouTermos(); }
   if ("sugerir" in D) { const n = sugerirAreas(e); S.msg = n ? `${n} área${n > 1 ? "s" : ""} de busca adicionada${n > 1 ? "s" : ""} a partir dos CNAEs.` : "Nenhuma área nova a sugerir para os CNAEs atuais."; return mudouTermos(); }
-  if (D.ufEmp) { const i = e.ufs.indexOf(D.ufEmp); if (i < 0) e.ufs.push(D.ufEmp); else e.ufs.splice(i, 1); salvar(); return render(); }
+  if (D.ufEmp) { const i = e.ufs.indexOf(D.ufEmp); if (i < 0) e.ufs.push(D.ufEmp); else e.ufs.splice(i, 1); S.uf = ""; return mudouTermos(); }
+  if ("ufAll" in D) { e.ufs = [...UFS]; S.uf = ""; return mudouTermos(); }
+  if ("ufNone" in D) { e.ufs = []; S.uf = ""; return mudouTermos(); }
+  if (D.ufReg) { const l = REGIOES[D.ufReg], tem = l.every(u => e.ufs.includes(u)); e.ufs = tem ? e.ufs.filter(u => !l.includes(u)) : [...new Set([...e.ufs, ...l])]; S.uf = ""; return mudouTermos(); }
   if (D.areaDel) { const i = +D.areaDel; if (S.areaSel === e.areas[i].id) S.areaSel = null; e.areas.splice(i, 1); return mudouTermos(); }
   if ("areaAdd" in D) { const id = $(S.modal ? "#mnova_area" : "#nova_area").value; if (id) e.areas.push(areaDoCatalogo(id)); return mudouTermos(); }
   if ("areaLivre" in D) { e.areas.push({id:"x" + novoId(), nome:"Nova área", ativa:true, termos:[]}); mudouTermos(); setTimeout(() => $(".area:last-of-type .area-nome")?.focus(), 30); return; }
