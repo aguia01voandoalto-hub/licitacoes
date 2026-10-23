@@ -349,7 +349,7 @@ const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" :
 const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const novoId = () => "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-let S = {ops:[], base:[], res:{}, fz:{estado:"parado"}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
+let S = {analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fz:{estado:"parado"}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
 try {
   const j2 = JSON.parse(localStorage.getItem("tl_v2") || "null");
   if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}});
@@ -619,6 +619,34 @@ async function iniciarFarejador() {
   if (S.empId === e.id) recomporOps(); render();
 }
 
+
+/* ---------- Analista (função no Supabase que lê o edital com o Claude) ---------- */
+const FN_ANALISTA = SB_URL + "/functions/v1/analista";
+const lerToken = () => { try { return localStorage.getItem("tl_analista_token") || ""; } catch(e) { return ""; } };
+const gravarToken = t => { try { localStorage.setItem("tl_analista_token", t); } catch(e) {} };
+const chamarAnalista = (corpo, sinal) => fetch(FN_ANALISTA, {method:"POST", signal:sinal, headers:{"content-type":"application/json", apikey:SB_KEY, Authorization:"Bearer " + SB_KEY, "x-analista-token":lerToken()}, body:JSON.stringify(corpo)});
+async function analisarEdital(id) {
+  const o = S.ops.find(x => x.id === id); if (!o) return;
+  S.analisando[id] = true; delete S.erroAnalise[id]; if (S.aberta === id) gaveta(id);
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 240000);
+  try {
+    const r = await chamarAnalista({id, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
+    S.analises[id] = j.dados;
+  } catch (err) {
+    S.erroAnalise[id] = err.name === "AbortError" ? "A análise demorou demais. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão (no claude.ai essa chamada fica bloqueada)." : err.message;
+  } finally { clearTimeout(t); delete S.analisando[id]; if (S.aberta === id) gaveta(id); render(); }
+}
+async function testarToken() {
+  S.msgTok = "Testando…"; render();
+  try {
+    const r = await chamarAnalista({}), j = await r.json().catch(() => ({}));
+    S.msgTok = r.status === 400 ? "Conectado: o código está certo e o Analista está pronto." : r.status === 401 ? "Código incorreto." : r.status === 503 ? (j.erro || "O servidor ainda não está configurado.") : (j.erro || "Resposta inesperada (HTTP " + r.status + ").");
+  } catch (err) { S.msgTok = "Não consegui falar com o servidor do Analista. No claude.ai a chamada fica bloqueada; use o endereço publicado."; }
+  render();
+}
+
 /* ============ SALA DE CONTROLE (SVG isométrico) ============ */
 const SC = {S:36, C:Math.sqrt(3)/2, W:12, D:10, ox:372, oy:176, H:4.2};
 const P = (x,y,z) => [SC.ox + (x-y)*SC.C*SC.S, SC.oy + (x+y)*.5*SC.S - z*SC.S];
@@ -819,7 +847,10 @@ function gaveta(id) {
       ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
       ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
   } else {
-    h += `<div class="bloco"><div class="vazio" style="border:0;padding:6px 0">Esta oportunidade ainda não foi analisada. A leitura automática do edital em PDF será ligada na próxima etapa. Por enquanto, abra o edital pelo link acima.</div></div>`;
+    const run = S.analisando[id], er = S.erroAnalise[id], tok = lerToken();
+    h += `<div class="bloco">${run ? '<div class="aviso info" role="status">O Analista está baixando e lendo o edital. Leva de 30 a 90 segundos…</div>' : "<div>Esta oportunidade ainda não foi analisada. O Analista baixa o edital no PNCP, lê e aponta prazos, exigências, riscos e multas, citando a página de cada trecho.</div>"}
+      ${er ? `<div class="aviso">${esc(er)}</div>` : ""}
+      ${run ? "" : tok ? `<div><button class="btn2 prim" type="button" data-analisar="${esc(id)}">Analisar este edital</button></div>` : '<div class="aviso">Para usar o Analista, informe o código de acesso na tela Empresa (Configuração do Analista).</div><div><button class="btn2" type="button" data-view="empresa">Abrir a configuração do Analista</button></div>'}</div>`;
   }
 
   h += `<h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
@@ -995,6 +1026,11 @@ function viewDocumentos() {
 
 const chipsTermos = (lista, attr) => lista.map((t,j) => `<span class="tchip">${esc(t)}<button type="button" aria-label="Remover ${esc(t)}" ${attr}="${j}">×</button></span>`).join("");
 
+function cfgAnalista() {
+  return `<section class="painel"><h2>Configuração do Analista</h2><p class="fonte">O Analista lê o edital no servidor (Supabase), onde fica a chave da Anthropic. Aqui você informa o código de acesso que definiu lá (segredo ANALISTA_TOKEN). Ele fica só neste navegador.</p>
+    <div class="form" style="grid-template-columns:1fr auto auto;align-items:end;max-width:700px"><label>Código de acesso<input id="tok_analista" type="password" autocomplete="off" value="${esc(lerToken())}"></label><button class="btn2" type="button" data-salvar-token>Salvar</button><button class="btn2 prim" type="button" data-testar-token>Testar conexão</button></div>
+    ${S.msgTok ? `<div class="aviso info" role="status">${esc(S.msgTok)}</div>` : ""}</section>`;
+}
 function viewEmpresa() {
   const e = emp();
   const lista = `<section class="painel"><h2>Empresas cadastradas</h2><div class="emps">${S.empresas.map(x => `<div class="empc ${x.id === S.empId ? "on" : ""}"><button type="button" class="empc-b" data-emp-sel="${x.id}"><b>${esc(x.razao || "Empresa sem nome")}</b><span>${esc(x.cnpj || "sem CNPJ")} · ${x.areas.filter(a => a.ativa).length} áreas de busca${x.id === S.empId ? " · ativa" : ""}</span></button><button class="acao" type="button" data-emp-del="${x.id}">${S.confirmaDel === x.id ? "Confirmar exclusão" : "Excluir"}</button></div>`).join("") || '<div class="vazio">Nenhuma empresa ainda. Importe o Cartão CNPJ abaixo ou crie uma empresa em branco.</div>'}</div>
@@ -1004,7 +1040,7 @@ function viewEmpresa() {
     <label class="drop" for="arq"><input type="file" id="arq" accept=".pdf,.json,.txt,.csv,application/pdf,application/json,text/plain"><span>Escolher o arquivo da empresa</span><small>ou arraste para cá</small></label>
     <div class="form" style="grid-template-columns:1fr auto;align-items:end;margin-top:12px"><label>Ou consultar pelo CNPJ<input id="cnpj_busca" placeholder="00.000.000/0000-00" inputmode="numeric"></label><button class="btn2" type="button" data-buscar-cnpj>Consultar</button></div>
     ${S.msg ? `<div class="aviso info" role="status">${esc(S.msg)}</div>` : ""}</section>`;
-  if (!e) return lista + imp;
+  if (!e) return lista + imp + cfgAnalista();
   const f = (k, t, cls = "") => `<label class="${cls}">${t}<input id="e_${k}" data-emp="${e.id}" value="${esc(e[k] || "")}"></label>`;
   const dados = `<section class="painel"><h2>Dados da empresa</h2><div class="form">${f("razao","Razão social","l")}${f("fantasia","Nome fantasia")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
     ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div><p class="fonte" style="margin:10px 0 0">As alterações são salvas automaticamente neste navegador.</p></section>`;
@@ -1025,7 +1061,7 @@ function viewEmpresa() {
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <label style="display:grid;gap:3px;max-width:260px;font-size:12px;color:var(--muted)">Propostas encerrando nos próximos<select data-dias>${[15,30,45,60,90].map(d => `<option value="${d}" ${e.dias === d ? "selected" : ""}>${d} dias</option>`).join("")}</select></label>
     <div><button class="btn2 prim" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div></section>`;
-  return `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${onde}${ev}`;
+  return `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${onde}${ev}${cfgAnalista()}`;
 }
 
 function render() {
@@ -1070,6 +1106,9 @@ function aoClicar(ev) {
   if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
   if ("buscarCnpj" in D) return buscarCnpj();
   if ("fzIniciar" in D) return iniciarFarejador();
+  if (D.analisar) return analisarEdital(D.analisar);
+  if ("salvarToken" in D) { gravarToken($("#tok_analista").value.trim()); S.msgTok = "Código salvo neste navegador."; return render(); }
+  if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
   if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
   if ("demoOff" in D) { S.demo = false; recomporOps(); return render(); }
   if ("fzParar" in D) { S.fz.parar = true; S.fz.msg = "Parando… aguarde a página atual terminar."; return render(); }
