@@ -691,23 +691,46 @@ async function pncpGet(url, fz, max) {
   throw new Error("o PNCP não respondeu");
 }
 function estadoFarejador() { return S.fz; }
-function salvarParcial(e, f, termos, palavras, achadas) {   // resultado parcial: o usuário já vê as oportunidades e nada se perde se fechar a aba
-  f.ultParcial = Date.now();
-  S.res[e.id] = {versao:2, parcial:true, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra:S.res[e.id]?.porPalavra || {}, itens:[...achadas.values()]};
+function salvarParcial(e, f, termos, palavras, achadas, extra) {   // resultado parcial: o usuário já vê as oportunidades e nada se perde se fechar a aba
+  f.ultParcial = Date.now(); const prev = S.res[e.id] || {};
+  S.res[e.id] = {...prev, versao:2, parcial:true, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra:f.porPalavra || prev.porPalavra || {}, itens:[...achadas.values(), ...(extra ? [...extra.values()] : [])]};
   gravarRes(e.id, S.res[e.id]); if (S.empId === e.id) { recomporOps(); if (S.view !== "empresa") render(); }
 }
-async function iniciarFarejador() {
-  const e = emp(), fz = S.fz;
+// modo "palavras": só as palavras-chave cadastradas (rápido); mantém o resultado das atividades da última busca completa.
+// Na busca completa, as palavras-chave vêm primeiro (são rápidas e precisas) e depois a varredura pelas atividades.
+async function iniciarFarejador(modo) {
+  const e = emp(), fz = S.fz, soPalavras = modo === "palavras";
   if (!e || fz.estado === "rodando") return;
-  const termos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), evitar = e.evitar.map(norm).filter(Boolean), palavras = e.palavras || [];
+  const areasTermos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), termos = soPalavras ? [] : areasTermos, evitar = e.evitar.map(norm).filter(Boolean), palavras = e.palavras || [];
+  if (soPalavras && !palavras.length) { S.fz = {estado:"erro", msg:"Cadastre ao menos uma palavra-chave (tela Empresa, “Palavras-chave”)."}; return render(); }
   if (!termos.length && !palavras.length) { S.fz = {estado:"erro", msg:"Defina ao menos uma atividade ativa ou uma palavra-chave para o Farejador saber o que procurar."}; return render(); }
   if (!e.ufs.length) { S.fz = {estado:"erro", msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
   ritmo.lento = false; ritmo.ok = 0; ritmo.pausa = 250;
-  const f = S.fz = {estado:"rodando", empId:e.id, parar:false, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now()};
-  const ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), achadas = new Map(), agora = Date.now();
+  const f = S.fz = {estado:"rodando", empId:e.id, parar:false, somentePalavras:soPalavras, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now(), porPalavra:{}};
+  const prev = S.res[e.id] || null, ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), agora = Date.now();
+  const achadas = new Map(soPalavras ? (prev?.itens || []).filter(o => o.via !== "palavra").map(o => [o.id, o]) : []);   // atividades: no modo "palavras" vêm da última busca
   try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, 1); }
   catch (err) { S.fz = {estado:"erro", msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
-  const pares = termos.length ? e.ufs.flatMap(uf => e.mods.map(m => [uf, m])) : [];
+  // 1) palavras-chave cadastradas: busca do portal, um estado por vez
+  const porPalavra = f.porPalavra, dePalavra = new Map();
+  if (palavras.length) {
+    f.fasePalavras = true; f.kwTotal = palavras.length * e.ufs.length; f.kwFeitas = 0;
+    try {
+      for (const kw of palavras) {
+        porPalavra[kw] = 0;
+        for (const uf of e.ufs) {
+          if (f.parar) break;
+          for (const it of await buscaPalavraPncp(kw, uf, f)) { if (!dePalavra.has(it.id)) { porPalavra[kw]++; if (!achadas.has(it.id)) { dePalavra.set(it.id, it); f.achadas++; } } }
+          f.kwFeitas++; atualizarProgresso();
+        }
+      }
+    } catch (err) { f.erro = err.message || String(err); }
+    f.fasePalavras = false;
+    if (!soPalavras && !f.erro && !f.parar) salvarParcial(e, f, termos, palavras, achadas, dePalavra);   // já mostra o que as palavras acharam enquanto a varredura segue
+  }
+  // 2) varredura pelas atividades
+  const pares = !f.erro && !f.parar && termos.length ? e.ufs.flatMap(uf => e.mods.map(m => [uf, m])) : [];
+  f.total = pares.length;
   const trabalhar = async id => {
     while (pares.length && !f.parar) {
       while (ritmo.lento && id > 0 && !f.parar) await dormir(1000);   // com o PNCP reclamando, só o primeiro trabalhador segue
@@ -722,39 +745,28 @@ async function iniciarFarejador() {
           const it = itemDoPncp(r);
           if (it.encerramento_proposta && new Date(it.encerramento_proposta) < agora) continue;
           const t = norm(it.objeto); if (evitar.some(x => t.includes(x))) continue;
-          if (termos.some(k => reTermo(k).test(t))) { if (!achadas.has(it.id)) f.achadas++; achadas.set(it.id, it); }
+          if (termos.some(k => reTermo(k).test(t))) { if (!achadas.has(it.id)) { f.achadas++; dePalavra.delete(it.id); } achadas.set(it.id, it); }
         }
         pg++; f.pagsFeitas = (f.pagsFeitas || 0) + 1; atualizarProgresso(); await dormir(ritmo.pausa);
-        if (Date.now() - (f.ultParcial || f.ini) > 90000) salvarParcial(e, f, termos, palavras, achadas);   // mostra e guarda o que já achou a cada ~1,5 min
+        if (Date.now() - (f.ultParcial || f.ini) > 90000) salvarParcial(e, f, termos, palavras, achadas, dePalavra);   // mostra e guarda o que já achou a cada ~1,5 min
       }
       f.feitos++;
     }
   };
-  try { await Promise.all([trabalhar(0), trabalhar(1)]); }
+  const totalPares = pares.length;
+  try { if (totalPares) await Promise.all([trabalhar(0), trabalhar(1)]); }
   catch (err) { f.erro = err.message || String(err); }
-  // palavras-chave cadastradas: busca do portal, um estado por vez
-  const porPalavra = {}, dePalavra = new Map();
-  if (!f.erro && !f.parar && palavras.length) {
-    f.fasePalavras = true; f.kwTotal = palavras.length * e.ufs.length; f.kwFeitas = 0;
-    try {
-      for (const kw of palavras) {
-        porPalavra[kw] = 0;
-        for (const uf of e.ufs) {
-          if (f.parar) break;
-          for (const it of await buscaPalavraPncp(kw, uf, f)) { if (!dePalavra.has(it.id)) { porPalavra[kw]++; if (!achadas.has(it.id)) { dePalavra.set(it.id, it); f.achadas++; } } }
-          f.kwFeitas++; atualizarProgresso();
-        }
-      }
-    } catch (err) { f.erro = err.message || String(err); }
-  }
-  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, mods:[...e.mods], dias:e.dias, lidas:f.lidas, ignoradas:f.ignoradas || 0, duracao:Date.now() - f.ini, itens:[...achadas.values(), ...dePalavra.values()]};
+  const agoraISO = new Date().toISOString();
+  S.res[e.id] = soPalavras
+    ? {...prev, versao:2, quando:agoraISO, ufs:[...new Set([...(prev?.ufs || []), ...e.ufs])], palavras:[...palavras], porPalavra, itens:[...achadas.values(), ...dePalavra.values()]}
+    : {versao:2, quando:agoraISO, quandoAtividades:agoraISO, ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, mods:[...e.mods], dias:e.dias, lidas:f.lidas, ignoradas:f.ignoradas || 0, duracao:Date.now() - f.ini, itens:[...achadas.values(), ...dePalavra.values()]};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
-  const total = achadas.size + dePalavra.size;
-  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${total}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ${f.lidas} editais lidos${palavras.length ? " e " + palavras.length + " palavra" + (palavras.length > 1 ? "s-chave" : "-chave") + " pesquisada" + (palavras.length > 1 ? "s" : "") : ""} (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados), ${total} licitações encontradas.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
+  const total = achadas.size + dePalavra.size, nP = palavras.length;
+  const parteP = nP ? `${nP} palavra${nP > 1 ? "s" : ""}-chave pesquisada${nP > 1 ? "s" : ""} (${[...Object.values(porPalavra)].reduce((x, y) => x + y, 0)} licitações)` : "";
+  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${total}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ` + (soPalavras ? parteP : `${f.lidas} editais lidos${nP ? " e " + parteP : ""} (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados)`) + `. ${total} licitações no total.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
   if (S.empId === e.id) recomporOps(); render();
 }
-
 
 /* ---------- Analista (função no Supabase que lê o edital com o Claude) ---------- */
 const FN_ANALISTA = SB_URL + "/functions/v1/analista";
@@ -1236,15 +1248,15 @@ function barraEstados(e) {
 function pctFz() {
   const f = S.fz;
   const ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = (f.pagsTotais || 0) + Math.max(0, (f.total || 0) - ini) * med;
-  const rastreio = f.total ? Math.min(1, (f.pagsFeitas || 0) / Math.max(1, est)) : 1;
-  const p = !f.temPalavras ? rastreio * 100 : f.fasePalavras ? 85 + 15 * (f.kwFeitas || 0) / Math.max(1, f.kwTotal || 1) : rastreio * 85;
+  const rastreio = f.total ? Math.min(1, (f.pagsFeitas || 0) / Math.max(1, est)) : 1, kw = f.kwTotal ? (f.kwFeitas || 0) / f.kwTotal : (f.temPalavras ? 0 : 1);
+  const p = f.somentePalavras ? kw * 100 : !f.temPalavras ? rastreio * 100 : f.fasePalavras ? kw * 15 : 15 + rastreio * 85;
   return Math.max(1, Math.min(99, Math.round(p)));
 }
 let _tp = 0;
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 function detalheFz() {   // ex.: "1.445 encontradas · página 120 de ~310 · 14:05"
   const f = S.fz, ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = Math.round((f.pagsTotais || 0) + Math.max(0, (f.total || 0) - ini) * med);
-  return `${f.achadas} encontradas` + (f.total && !f.fasePalavras ? ` · página ${f.pagsFeitas || 0} de ~${est}` : "") + ` · ${mmss(Date.now() - f.ini)}`;
+  return `${f.achadas} encontradas` + (f.total && !f.fasePalavras && !f.somentePalavras ? ` · página ${f.pagsFeitas || 0} de ~${est}` : "") + ` · ${mmss(Date.now() - f.ini)}`;
 }
 function atualizarProgresso(forcar) {
   const agora = Date.now(); if (!forcar && agora - _tp < 1200) return; _tp = agora;
@@ -1263,7 +1275,7 @@ function resumoBusca(e) {   // o que foi buscado na última busca desta empresa
   const mods = (r.mods || e.mods).map(m => MODALIDADES[m] || "modalidade " + m).join(", "), por = r.porPalavra || {};
   return `<details class="resumo"><summary>O que foi buscado na última busca</summary><div class="res-c">
     <dl class="kv"><dt>Quando</dt><dd>${esc(fmtData(r.quando))}${r.parcial ? " (parcial)" : ""}${r.duracao ? " · levou " + mmss(r.duracao) : ""}</dd>
-    <dt>Estados</dt><dd>${(r.ufs || []).length === 27 ? "todos os 27" : esc((r.ufs || []).join(", "))}</dd>
+    ${r.quandoAtividades && r.quandoAtividades !== r.quando ? `<dt>Atividades</dt><dd>buscadas em ${esc(fmtData(r.quandoAtividades))}</dd>` : ""}<dt>Estados</dt><dd>${(r.ufs || []).length === 27 ? "todos os 27" : esc((r.ufs || []).join(", "))}</dd>
     <dt>Modalidades</dt><dd>${esc(mods)}</dd>
     <dt>Situação</dt><dd>Recebendo ou a receber proposta, com encerramento em até ${r.dias || e.dias} dias; revogadas, anuladas e suspensas descartadas</dd>
     <dt>Lidas</dt><dd>${r.lidas != null ? r.lidas.toLocaleString("pt-BR") + " licitações, " + (r.ignoradas || 0) + " descartadas" : "—"}</dd>
@@ -1276,7 +1288,7 @@ function fzStrip() {
   const e = emp(); if (!e) return "";
   const f = S.fz, rodando = f.estado === "rodando", r = S.res[e.id], meu = !f.empId || f.empId === e.id || f.estado === "erro";
   const ufs = e.ufs.length ? e.ufs.join(", ") : "nenhum estado escolhido";
-  return `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}</div>
+  return `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}${!rodando && (e.palavras || []).length ? '<button class="btn2" type="button" data-fz-palavras style="margin-top:8px;width:100%">Buscar só as palavras-chave</button>' : ""}</div>
     <div class="fz-t"><b>Farejador de ${esc(e.razao || "a empresa")}</b><span>Estados: ${esc(ufs)} · propostas nos próximos ${e.dias} dias · <button class="lnk" type="button" data-view="empresa">alterar</button></span>
     <span>${r ? "Última busca: " + fmtData(r.quando) + " · " + r.itens.length + " licitações encontradas" : "Ainda não fez nenhuma busca para esta empresa."}</span></div>
     <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + detalheFz() : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>` + resumoBusca(e);
@@ -1387,12 +1399,14 @@ function viewDocumentos() {
 
 const chipsTermos = (lista, attr) => lista.map((t,j) => `<span class="tchip">${esc(t)}<button type="button" aria-label="Remover ${esc(t)}" ${attr}="${j}">×</button></span>`).join("");
 
+const palavrasPendentes = e => { const r = S.res[e.id], ja = new Set((r?.palavras || []).map(norm)); return (e.palavras || []).filter(k => !ja.has(norm(k))); };
 function palavrasBox(e) {
   const por = S.res[e.id]?.porPalavra || {};
   return `<section class="painel pos"><h2>Palavras-chave <small>(o que o Farejador procura)</small></h2><p class="fonte">Cadastre as palavras que a empresa quer <b>encontrar</b>. Quando o Farejador roda, ele procura cada uma no PNCP (a mesma busca do portal, que também olha os itens da licitação), nos estados da empresa, só em licitações recebendo ou a receber proposta. Prefira expressões específicas, como “cadeira ergonômica”.</p>
     <div class="chips">${(e.palavras || []).map((k, j) => `<span class="tchip">${esc(k)}${por[k] != null ? ` <small title="encontradas na última busca">${por[k]}</small>` : ""}<button type="button" title="Mover para Palavras a evitar" aria-label="Mover ${esc(k)} para Palavras a evitar" data-palavra-mover="${j}">⇩</button><button type="button" aria-label="Remover ${esc(k)}" data-palavra-del="${j}">×</button></span>`).join("") || '<span class="fonte" style="margin:0">Nenhuma palavra-chave cadastrada.</span>'}</div>
     <div class="add"><input id="nova_palavra" placeholder="Ex.: cadeira ergonômica, toner original" aria-label="Nova palavra-chave"><button class="btn2 prim" type="button" data-palavra-add>Adicionar às palavras-chave</button></div>
-    ${(e.palavras || []).length ? '<div><button class="btn2" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div>' : ""}</section>`;
+    ${palavrasPendentes(e).length ? `<div class="aviso info" role="status"><b>${palavrasPendentes(e).length === 1 ? "1 palavra-chave ainda não foi buscada" : palavrasPendentes(e).length + " palavras-chave ainda não foram buscadas"}:</b> ${palavrasPendentes(e).map(esc).join(", ")}. Cadastrar só guarda a palavra; o Farejador é quem procura no PNCP.</div>` : ""}
+    ${(e.palavras || []).length ? '<div class="acoes" style="max-width:520px"><button class="btn2 prim" type="button" data-fz-palavras>Buscar as palavras-chave agora</button><button class="btn2" type="button" data-fz-iniciar>▶ Farejador completo</button></div>' : ""}</section>`;
 }
 function cfgAnalista() {
   return `<section class="painel"><h2>Configuração do Analista</h2><p class="fonte">O Analista lê o edital no servidor (Supabase), onde fica a chave da Anthropic. Aqui você informa o código de acesso que definiu lá (segredo ANALISTA_TOKEN). Ele fica só neste navegador.</p>
@@ -1488,6 +1502,7 @@ function aoClicar(ev) {
   if ("entrarTela" in D) { S.auth = "login"; return render(); }
   if ("importarLocais" in D) { importarLocais().then(n => { S.msg = n ? `${n} empresa${n > 1 ? "s enviadas" : " enviada"} para a sua conta.` : ""; render(); }); return; }
   if ("fzIniciar" in D) return iniciarFarejador();
+  if ("fzPalavras" in D) return iniciarFarejador("palavras");
   if (D.analisar) return analisarEdital(D.analisar);
   if ("salvarToken" in D) { gravarToken($("#tok_analista").value.trim()); S.msgTok = "Código salvo neste navegador."; return render(); }
   if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
