@@ -653,36 +653,52 @@ function itemDoPncp(r) {
     link_origem:r.linkSistemaOrigem || r.linkProcessoEletronico || null, arquivos_api:`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${r.anoCompra}/${r.sequencialCompra}/arquivos`,
     numero_compra:r.numeroCompra, ano:r.anoCompra, processo:r.processo};
 }
+// Ritmo das consultas ao PNCP: ele limita consultas seguidas. Ao primeiro aviso, passamos a uma consulta por vez e mais devagar;
+// depois de 25 respostas boas seguidas, voltamos ao ritmo normal.
+const ritmo = {lento:false, ok:0, pausa:250};
+const throttled = () => { ritmo.lento = true; ritmo.ok = 0; ritmo.pausa = 1500; };
+const respondeu = () => { if (ritmo.lento && ++ritmo.ok >= 25) { ritmo.lento = false; ritmo.pausa = 250; } };
+async function esperarComContagem(ms, fz, texto) {   // espera mostrando quantos segundos faltam
+  const fim = Date.now() + ms;
+  while (Date.now() < fim && !fz.parar) { fz.msg = `${texto} Retomando em ${Math.ceil((fim - Date.now()) / 1000)}s…`; atualizarProgresso(true); await dormir(1000); }
+}
 async function pncpGet(url, fz, max) {
-  const N = max || 10;
+  const N = max || 10, espera = i => Math.round(Math.min(60000, 6000 * Math.pow(1.5, i)) * (0.8 + Math.random() * 0.4));
   for (let i = 0; i < N; i++) {
     let r;
     try { r = await fetch(url, {headers:{Accept:"application/json"}}); }
     catch (err) {   // o PNCP responde 429 sem o cabeçalho CORS: o navegador só mostra "Failed to fetch"
       if (i === N - 1) throw err;
-      fz.msg = "O PNCP está limitando as consultas. Aguardando para retomar…"; await dormir(Math.min(90000, 10000 * (i + 1))); continue;
+      throttled(); await esperarComContagem(espera(i), fz, "O PNCP está limitando as consultas."); continue;
     }
-    if (r.status === 204) return {data:[]};
-    if (r.ok) return r.json();
-    if (r.status === 429 || r.status >= 500) { fz.msg = "O PNCP pediu para esperar. Retomando em instantes…"; await dormir(Math.max(Number(r.headers.get("Retry-After")) * 1000 || 0, 15000 * (i + 1))); continue; }
+    if (r.status === 204) { respondeu(); return {data:[]}; }
+    if (r.ok) { respondeu(); return r.json(); }
+    if (r.status === 429 || r.status >= 500) { throttled(); await esperarComContagem(Math.max(Number(r.headers.get("Retry-After")) * 1000 || 0, espera(i)), fz, "O PNCP pediu para esperar."); continue; }
     throw new Error("HTTP " + r.status);
   }
   throw new Error("o PNCP não respondeu");
 }
 function estadoFarejador() { return S.fz; }
+function salvarParcial(e, f, termos, palavras, achadas) {   // resultado parcial: o usuário já vê as oportunidades e nada se perde se fechar a aba
+  f.ultParcial = Date.now();
+  S.res[e.id] = {versao:2, parcial:true, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra:S.res[e.id]?.porPalavra || {}, itens:[...achadas.values()]};
+  gravarRes(e.id, S.res[e.id]); if (S.empId === e.id) { recomporOps(); if (S.view !== "empresa") render(); }
+}
 async function iniciarFarejador() {
   const e = emp(), fz = S.fz;
   if (!e || fz.estado === "rodando") return;
   const termos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), evitar = e.evitar.map(norm).filter(Boolean), palavras = e.palavras || [];
   if (!termos.length && !palavras.length) { S.fz = {estado:"erro", msg:"Defina ao menos uma atividade ativa ou uma palavra-chave para o Farejador saber o que procurar."}; return render(); }
   if (!e.ufs.length) { S.fz = {estado:"erro", msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
+  ritmo.lento = false; ritmo.ok = 0; ritmo.pausa = 250;
   const f = S.fz = {estado:"rodando", empId:e.id, parar:false, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now()};
   const ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), achadas = new Map(), agora = Date.now();
   try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, 1); }
   catch (err) { S.fz = {estado:"erro", msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
   const pares = termos.length ? e.ufs.flatMap(uf => e.mods.map(m => [uf, m])) : [];
-  const trabalhar = async () => {
+  const trabalhar = async id => {
     while (pares.length && !f.parar) {
+      while (ritmo.lento && id > 0 && !f.parar) await dormir(1000);   // com o PNCP reclamando, só o primeiro trabalhador segue
       const [uf, mod] = pares.shift(); let pg = 1, tot = 1; f.paresIni = (f.paresIni || 0) + 1;
       while (pg <= tot && !f.parar) {
         f.msg = `Buscando ${uf} · ${MODALIDADES[mod] || "modalidade " + mod} · página ${pg} de ${tot}`;
@@ -696,12 +712,13 @@ async function iniciarFarejador() {
           const t = norm(it.objeto); if (evitar.some(x => t.includes(x))) continue;
           if (termos.some(k => reTermo(k).test(t))) { if (!achadas.has(it.id)) f.achadas++; achadas.set(it.id, it); }
         }
-        pg++; f.pagsFeitas = (f.pagsFeitas || 0) + 1; atualizarProgresso(); await dormir(250);   // pausa curta: o PNCP limita consultas seguidas
+        pg++; f.pagsFeitas = (f.pagsFeitas || 0) + 1; atualizarProgresso(); await dormir(ritmo.pausa);
+        if (Date.now() - (f.ultParcial || f.ini) > 90000) salvarParcial(e, f, termos, palavras, achadas);   // mostra e guarda o que já achou a cada ~1,5 min
       }
       f.feitos++;
     }
   };
-  try { await Promise.all([trabalhar(), trabalhar()]); }
+  try { await Promise.all([trabalhar(0), trabalhar(1)]); }
   catch (err) { f.erro = err.message || String(err); }
   // palavras-chave cadastradas: busca do portal, um estado por vez
   const porPalavra = {}, dePalavra = new Map();
@@ -1212,12 +1229,17 @@ function pctFz() {
   return Math.max(1, Math.min(99, Math.round(p)));
 }
 let _tp = 0;
-function atualizarProgresso() {
-  const agora = Date.now(); if (agora - _tp < 1200) return; _tp = agora;
+const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+function detalheFz() {   // ex.: "1.445 encontradas · página 120 de ~310 · 14:05"
+  const f = S.fz, ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = Math.round((f.pagsTotais || 0) + Math.max(0, (f.total || 0) - ini) * med);
+  return `${f.achadas} encontradas` + (f.total && !f.fasePalavras ? ` · página ${f.pagsFeitas || 0} de ~${est}` : "") + ` · ${mmss(Date.now() - f.ini)}`;
+}
+function atualizarProgresso(forcar) {
+  const agora = Date.now(); if (!forcar && agora - _tp < 1200) return; _tp = agora;
   const f = S.fz, pct = pctFz();
   document.querySelectorAll(".fz-bar").forEach(b => b.style.width = pct + "%");
-  document.querySelectorAll(".fz-msg").forEach(m => m.textContent = f.msg + " · " + f.achadas + " encontradas até agora");
-  const sv = $(".cena-wrap svg"); if (sv && S.view === "inicio") sv.innerHTML = sala(metricas());
+  document.querySelectorAll(".fz-msg").forEach(m => m.textContent = f.msg + " · " + detalheFz());
+  const sv = $(".cena-wrap svg"); if (sv && S.view === "inicio" && !forcar) sv.innerHTML = sala(metricas());
 }
 function fzStrip() {
   const e = emp(); if (!e) return "";
@@ -1226,7 +1248,7 @@ function fzStrip() {
   return `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}</div>
     <div class="fz-t"><b>Farejador de ${esc(e.razao || "a empresa")}</b><span>Estados: ${esc(ufs)} · propostas nos próximos ${e.dias} dias · <button class="lnk" type="button" data-view="empresa">alterar</button></span>
     <span>${r ? "Última busca: " + fmtData(r.quando) + " · " + r.itens.length + " licitações encontradas" : "Ainda não fez nenhuma busca para esta empresa."}</span></div>
-    <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + f.achadas + " encontradas até agora" : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>`;
+    <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + detalheFz() : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>`;
 }
 function hdrEmp() {
   if (!S.empresas.length) return "";
