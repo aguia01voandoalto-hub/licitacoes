@@ -431,7 +431,7 @@ const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" :
 const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const novoId = () => "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-let S = {fase:"", docsLic:{}, obs:{}, analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fz:{estado:"parado"}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
+let S = {fase:"", docsLic:{}, obs:{}, analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fzs:{}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
 try {
   const j2 = JSON.parse(localStorage.getItem("tl_v2") || "null");
   if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}, obs:j2.obs||{}});
@@ -483,7 +483,7 @@ function sugerirAreas(e) {
 }
 function novaEmpresa(dados = {}) {
   const e = {id:novoUuid(), razao:"", fantasia:"", cnpj:"", porte:"", end:"", rep:"", cargo:"", cpf:"", cnaes:[], areas:[], evitar:[], palavras:[], docs:[], ufs:[], mods:[6, 8], dias:45, ...dados};
-  S.empresas.push(e); S.empId = e.id; S.areaSel = null; S.res[e.id] = null; recomporOps(); return e;
+  S.empresas.push(e); S.empId = e.id; resetarContexto(); S.res[e.id] = null; recomporOps(); return e;
 }
 
 // Memória entre buscas: o que já apareceu antes não volta como novidade, e o que o usuário já trabalhou (analisou, vai participar, descartou) nunca some da busca seguinte.
@@ -699,6 +699,13 @@ async function pncpGet(url, fz, max) {
   }
   throw new Error("o PNCP não respondeu");
 }
+// O Farejador é de cada empresa: S.fz sempre é o da empresa ativa. Só uma busca roda por vez (o PNCP limita as consultas).
+const OCIOSO = Object.freeze({estado:"parado"});
+Object.defineProperty(S, "fz", {get: () => S.fzs[S.empId] || OCIOSO, set: v => { S.fzs[v.empId || S.empId] = v; }});
+const buscaOcupada = () => Object.values(S.fzs).find(x => x.estado === "rodando") || null;
+const nomeEmp = id => S.empresas.find(x => x.id === id)?.fantasia || S.empresas.find(x => x.id === id)?.razao || "outra empresa";
+// Trocar de empresa não carrega nada da anterior: filtros, busca, gaveta aberta, paginação e janelas voltam ao zero.
+function resetarContexto() { S.areaSel = null; S.uf = ""; S.fase = ""; S.q = ""; S.soNovas = false; S.aberta = null; S.modal = null; S.limite = {farejadas:20}; S.demo = false; S.confirmaDel = null; }
 function estadoFarejador() { return S.fz; }
 function salvarParcial(e, f, termos, palavras, achadas, extra) {   // resultado parcial: o usuário já vê as oportunidades e nada se perde se fechar a aba
   f.ultParcial = Date.now(); const prev = S.res[e.id] || {};
@@ -710,16 +717,18 @@ function salvarParcial(e, f, termos, palavras, achadas, extra) {   // resultado 
 async function iniciarFarejador(modo) {
   const e = emp(), fz = S.fz, soPalavras = modo === "palavras";
   if (!e || fz.estado === "rodando") return;
+  const ocupada = buscaOcupada();
+  if (ocupada) { S.fzs[e.id] = {estado:"erro", empId:e.id, msg:`O Farejador está buscando para “${nomeEmp(ocupada.empId)}”. Espere terminar ou pare aquela busca antes de iniciar esta (o PNCP limita as consultas).`}; return render(); }
   const areasTermos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), termos = soPalavras ? [] : areasTermos, evitar = e.evitar.map(norm).filter(Boolean), palavras = e.palavras || [];
-  if (soPalavras && !palavras.length) { S.fz = {estado:"erro", msg:"Cadastre ao menos uma palavra-chave (tela Empresa, “Palavras-chave”)."}; return render(); }
-  if (!termos.length && !palavras.length) { S.fz = {estado:"erro", msg:"Defina ao menos uma atividade ativa ou uma palavra-chave para o Farejador saber o que procurar."}; return render(); }
-  if (!e.ufs.length) { S.fz = {estado:"erro", msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
+  if (soPalavras && !palavras.length) { S.fzs[e.id] = {estado:"erro", empId:e.id, msg:"Cadastre ao menos uma palavra-chave (tela Empresa, “Palavras-chave”)."}; return render(); }
+  if (!termos.length && !palavras.length) { S.fzs[e.id] = {estado:"erro", empId:e.id, msg:"Defina ao menos uma atividade ativa ou uma palavra-chave para o Farejador saber o que procurar."}; return render(); }
+  if (!e.ufs.length) { S.fzs[e.id] = {estado:"erro", empId:e.id, msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
   ritmo.lento = false; ritmo.ok = 0; ritmo.pausa = 250;
-  const f = S.fz = {estado:"rodando", empId:e.id, parar:false, somentePalavras:soPalavras, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now(), porPalavra:{}};
+  const f = S.fzs[e.id] = {estado:"rodando", empId:e.id, parar:false, somentePalavras:soPalavras, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now(), porPalavra:{}};
   const prev = S.res[e.id] || null, ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), agora = Date.now();
   const achadas = new Map(soPalavras ? (prev?.itens || []).filter(o => o.via !== "palavra").map(o => [o.id, o]) : []);   // atividades: no modo "palavras" vêm da última busca
   try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, 1); }
-  catch (err) { S.fz = {estado:"erro", msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
+  catch (err) { S.fzs[e.id] = {estado:"erro", empId:e.id, msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
   // 1) palavras-chave cadastradas: busca do portal, um estado por vez
   const porPalavra = f.porPalavra, dePalavra = new Map();
   if (palavras.length) {
@@ -763,6 +772,7 @@ async function iniciarFarejador(modo) {
   const totalPares = pares.length;
   try { if (totalPares) await Promise.all([trabalhar(0), trabalhar(1)]); }
   catch (err) { f.erro = err.message || String(err); }
+  if (!S.empresas.some(x => x.id === e.id)) return;   // a empresa foi excluída (ou a conta saiu) durante a busca: nada é gravado
   const agoraISO = new Date().toISOString();
   const m = marcarNovas(e, prev, [...achadas.values(), ...dePalavra.values()], agoraISO);
   S.res[e.id] = soPalavras
@@ -886,7 +896,7 @@ S.user = null; S.modoLocal = false; S.auth = "carregando"; S.nuvem = ""; S.login
 function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; return e; }
 const dadosDe = e => { const {id, ...d} = e; return d; };
 const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}});
-const limparMemoria = () => { S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.docsLic = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
+const limparMemoria = () => { Object.values(S.fzs).forEach(f => { f.parar = true; }); S.fzs = {}; S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.docsLic = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
 
 function msgAuth(err) {
   const m = String(err && err.message || err);
@@ -1271,6 +1281,7 @@ function barraEstados(e) {
     ${sel.length ? "" : '<div class="eb-n">Marque os estados que interessam. O Farejador também busca só neles.</div>'}${sel.length > 8 ? '<div class="eb-n">Com muitos estados, a busca do Farejador leva vários minutos.</div>' : ""}</div>`;
 }
 
+const pctFzDe = f => { const t = S.fzs; const ant = S.empId; try { S.empId = f.empId; return pctFz(); } finally { S.empId = ant; } };
 function pctFz() {
   const f = S.fz;
   const ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = (f.pagsTotais || 0) + Math.max(0, (f.total || 0) - ini) * med;
@@ -1286,7 +1297,8 @@ function detalheFz() {   // ex.: "1.445 encontradas · página 120 de ~310 · 14
 }
 function atualizarProgresso(forcar) {
   const agora = Date.now(); if (!forcar && agora - _tp < 1200) return; _tp = agora;
-  const f = S.fz, pct = pctFz();
+  const f = S.fz; if (f.estado !== "rodando") return;   // a busca em andamento é de outra empresa: não mexe nesta tela
+  const pct = pctFz();
   document.querySelectorAll(".fz-bar").forEach(b => b.style.width = pct + "%");
   document.querySelectorAll(".fz-msg").forEach(m => m.textContent = f.msg + " · " + detalheFz());
   const sv = $(".cena-wrap svg"); if (sv && S.view === "inicio" && !forcar) sv.innerHTML = sala(metricas());
@@ -1313,8 +1325,8 @@ function resumoBusca(e) {   // o que foi buscado na última busca desta empresa
 function fzStrip() {
   const e = emp(); if (!e) return "";
   const f = S.fz, rodando = f.estado === "rodando", r = S.res[e.id], meu = !f.empId || f.empId === e.id || f.estado === "erro";
-  const ufs = e.ufs.length ? e.ufs.join(", ") : "nenhum estado escolhido";
-  return `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}${!rodando && (e.palavras || []).length ? '<button class="btn2" type="button" data-fz-palavras style="margin-top:8px;width:100%">Buscar só as palavras-chave</button>' : ""}</div>
+  const ufs = e.ufs.length ? e.ufs.join(", ") : "nenhum estado escolhido", oc = !rodando ? buscaOcupada() : null;
+  return (oc ? `<div class="aviso info" role="status"><b>O Farejador está ocupado com “${esc(nomeEmp(oc.empId))}”</b> (${pctFzDe(oc)}%). Só uma empresa busca por vez porque o PNCP limita as consultas. <button class="lnk" type="button" data-fz-ir-para="${esc(oc.empId)}">Ver essa busca</button> · <button class="lnk" type="button" data-fz-para-outra>Parar aquela busca</button></div>` : "") + `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}${!rodando && (e.palavras || []).length ? '<button class="btn2" type="button" data-fz-palavras style="margin-top:8px;width:100%">Buscar só as palavras-chave</button>' : ""}</div>
     <div class="fz-t"><b>Farejador de ${esc(e.razao || "a empresa")}</b><span>Estados: ${esc(ufs)} · propostas nos próximos ${e.dias} dias · <button class="lnk" type="button" data-view="empresa">alterar</button></span>
     <span>${r ? "Última busca: " + fmtData(r.quando) + " · " + r.itens.length + " licitações encontradas" : "Ainda não fez nenhuma busca para esta empresa."}</span></div>
     <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + detalheFz() : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>` + resumoBusca(e);
@@ -1501,7 +1513,7 @@ function irPara(v) {
 const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; S.aberta = null; document.body.classList.remove("sem-rolagem"); };
 const abrirDetalhe = (id, guardar) => { S.aberta = id; gaveta(id); carregarDocs(id, guardar); };
 const mudouTermos = () => { _memo.k = ""; salvar(); render(); };
-const escolherEmpresa = id => { S.empId = id; S.areaSel = null; S.uf = ""; S.demo = false; recomporOps(); salvar(); render(); };
+const escolherEmpresa = id => { S.empId = id; resetarContexto(); recomporOps(); salvar(); render(); };
 
 /* ============ EVENTOS ============ */
 function lerForm() {   // só lê o formulário se ele está visível e é da empresa ativa (evita gravar dados de uma tela antiga)
@@ -1526,7 +1538,7 @@ function aoClicar(ev) {
   if (D.areaSel !== undefined) { S.areaSel = D.areaSel || null; render(); return; }
   if (D.empSel) { lerForm(); return escolherEmpresa(D.empSel); }
   if ("empNew" in D) { lerForm(); novaEmpresa(); S.msg = ""; mudouTermos(); return; }
-  if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; if (S.user) _sync.apagar.add(D.empDel); S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
+  if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } if (S.fzs[D.empDel]) { S.fzs[D.empDel].parar = true; delete S.fzs[D.empDel]; } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; delete S.obs[D.empDel]; delete S.res[D.empDel]; if (S.user) _sync.apagar.add(D.empDel); S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
   if ("buscarCnpj" in D) return buscarCnpj();
   if ("entrar" in D) return entrar($("#lg-email").value.trim(), $("#lg-senha").value);
   if ("sair" in D) return sair();
@@ -1540,7 +1552,9 @@ function aoClicar(ev) {
   if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
   if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
   if ("demoOff" in D) { S.demo = false; recomporOps(); return render(); }
-  if ("fzParar" in D) { S.fz.parar = true; S.fz.msg = "Parando… aguarde a página atual terminar."; return render(); }
+  if ("fzParar" in D) { const f = S.fz; if (f.estado === "rodando") { f.parar = true; f.msg = "Parando… aguarde a página atual terminar."; } return render(); }
+  if ("fzParaOutra" in D) { const o = buscaOcupada(); if (o) { o.parar = true; o.msg = "Parando…"; } return render(); }
+  if (D.fzIrPara) { escolherEmpresa(D.fzIrPara); return; }
   if ("ativAbrir" in D) { S.modal = "ativ"; S.ativAberta = null; return render(); }
   if ("ativFechar" in D) { S.modal = null; return render(); }
   if (D.ativExp !== undefined) { S.ativAberta = S.ativAberta === +D.ativExp ? null : +D.ativExp; return renderModal(); }
