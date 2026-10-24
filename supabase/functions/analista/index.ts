@@ -76,6 +76,53 @@ function textoDocx(bytes: Uint8Array): string {
     .replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// Word antigo (.doc, formato binário OLE): lê o fluxo "WordDocument" e remonta o texto pela tabela de pedaços (piece table).
+function textoDoc(bytes: Uint8Array): string {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 512 || dv.getUint32(0, true) !== 0xE011CFD0) throw new Error("não é um arquivo Word antigo");
+  const sec = 1 << dv.getUint16(0x1E, true), nFat = dv.getUint32(0x2C, true), dir0 = dv.getUint32(0x30, true);
+  const so = (n: number) => (n + 1) * sec;
+  const difat: number[] = []; for (let i = 0; i < 109; i++) { const v = dv.getUint32(0x4C + i * 4, true); if (v < 0xFFFFFFFA) difat.push(v); }
+  let dn = dv.getUint32(0x44, true), nd = dv.getUint32(0x48, true);
+  while (nd-- > 0 && dn < 0xFFFFFFFA) { for (let i = 0; i < sec / 4 - 1; i++) { const v = dv.getUint32(so(dn) + i * 4, true); if (v < 0xFFFFFFFA) difat.push(v); } dn = dv.getUint32(so(dn) + sec - 4, true); }
+  const fat: number[] = []; for (const f of difat.slice(0, nFat)) for (let i = 0; i < sec / 4; i++) fat.push(dv.getUint32(so(f) + i * 4, true));
+  const cadeia = (ini: number, max = 1 << 20) => { const o: number[] = []; let n = ini; while (n < 0xFFFFFFFA && o.length < max) { o.push(n); n = fat[n]; } return o; };
+  const ler = (ini: number, tam: number) => { const out = new Uint8Array(tam); let p = 0; for (const n of cadeia(ini)) { const ch = bytes.subarray(so(n), so(n) + sec); out.set(ch.subarray(0, Math.min(sec, tam - p)), p); p += sec; if (p >= tam) break; } return out; };
+  const dirBytes = new Uint8Array(cadeia(dir0).length * sec); cadeia(dir0).forEach((n, i) => dirBytes.set(bytes.subarray(so(n), so(n) + sec), i * sec));
+  const dd = new DataView(dirBytes.buffer), fluxos: Record<string, { ini: number; tam: number }> = {};
+  for (let o = 0; o + 128 <= dirBytes.length; o += 128) {
+    const len = dd.getUint16(o + 0x40, true), tipo = dirBytes[o + 0x42]; if (tipo !== 2 || len < 2) continue;
+    let nome = ""; for (let i = 0; i < len / 2 - 1; i++) nome += String.fromCharCode(dd.getUint16(o + i * 2, true));
+    fluxos[nome] = { ini: dd.getUint32(o + 0x74, true), tam: dd.getUint32(o + 0x78, true) };
+  }
+  // fluxos pequenos (< 4096 bytes) ficam no "mini stream", guardado na entrada raiz
+  const raiz = (() => { for (let o = 0; o + 128 <= dirBytes.length; o += 128) if (dirBytes[o + 0x42] === 5) return { ini: dd.getUint32(o + 0x74, true), tam: dd.getUint32(o + 0x78, true) }; return null; })();
+  const corte = dv.getUint32(0x38, true), msec = 1 << dv.getUint16(0x20, true);
+  const miniFat: number[] = []; for (const n of cadeia(dv.getUint32(0x3C, true))) for (let i = 0; i < sec / 4; i++) miniFat.push(dv.getUint32(so(n) + i * 4, true));
+  const mini = raiz ? ler(raiz.ini, raiz.tam) : new Uint8Array(0);
+  const lerFluxo = (f: { ini: number; tam: number }) => {
+    if (f.tam >= corte) return ler(f.ini, f.tam);
+    const out = new Uint8Array(f.tam); let p = 0, n = f.ini;
+    while (n < 0xFFFFFFFA && p < f.tam) { out.set(mini.subarray(n * msec, n * msec + Math.min(msec, f.tam - p)), p); p += msec; n = miniFat[n]; }
+    return out;
+  };
+  const wd = fluxos["WordDocument"]; if (!wd) throw new Error("sem WordDocument");
+  const w = lerFluxo(wd), wv = new DataView(w.buffer);
+  const tb = fluxos[(wv.getUint16(0x0A, true) & 0x200) ? "1Table" : "0Table"]; if (!tb) throw new Error("sem tabela");
+  const t = lerFluxo(tb), tv = new DataView(t.buffer), fcClx = wv.getUint32(0x1A2, true), lcbClx = wv.getUint32(0x1A6, true);
+  let p = fcClx; const fim = fcClx + lcbClx;
+  while (p < fim && t[p] === 1) p += 3 + tv.getUint16(p + 1, true);
+  if (t[p] !== 2) throw new Error("sem tabela de pedaços");
+  const lcb = tv.getUint32(p + 1, true), n = Math.floor((lcb - 4) / 12), cp0 = p + 5, pcd0 = cp0 + (n + 1) * 4;
+  const partes: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const cpIni = tv.getUint32(cp0 + i * 4, true), cpFim = tv.getUint32(cp0 + (i + 1) * 4, true), fc = tv.getUint32(pcd0 + i * 8 + 2, true), len = cpFim - cpIni;
+    if (fc & 0x40000000) partes.push(new TextDecoder("windows-1252").decode(w.subarray((fc & 0x3FFFFFFF) >> 1, ((fc & 0x3FFFFFFF) >> 1) + len)));
+    else partes.push(new TextDecoder("utf-16le").decode(w.subarray(fc, fc + len * 2)));
+  }
+  return partes.join("").replace(/\x13[^\x14\x15]*\x14/g, "").replace(/[\x13\x14\x15]/g, "").replace(/[\r\x0b]/g, "\n").replace(/\x07/g, "\t").replace(/[\x00-\x08\x0c\x0e-\x1f]/g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function nomeDoDownload(r: Response, url: string): string {
   const cd = r.headers.get("content-disposition") ?? "";
   const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
@@ -147,6 +194,11 @@ async function prepararConteudo(bytes: Uint8Array, nome: string, nivel = 0): Pro
     }
     let bin = ""; for (let i = 0; i < saida.length; i += 0x8000) bin += String.fromCharCode(...saida.subarray(i, i + 0x8000));
     return { bloco: { type: "document", source: { type: "base64", media_type: "application/pdf", data: btoa(bin) } }, arquivo: nome, tipo: "pdf", paginasTotal: total, paginasLidas: lidas, bytes: bytes.length };
+  }
+  if (bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0) {   // Word antigo (.doc)
+    let t = ""; try { t = textoDoc(bytes); } catch (_) { /* cai no erro abaixo */ }
+    if (t.length < 200) throw new Erro(422, "O arquivo do edital (Word antigo, .doc) não tem texto que eu consiga ler. Abra o edital pelo link.");
+    return { bloco: { type: "text", text: `CONTEÚDO DO EDITAL (${nome}):\n\n${t.slice(0, MAX_CHARS)}` }, arquivo: nome, tipo: "doc", paginasTotal: null, paginasLidas: null, bytes: bytes.length };
   }
   if (cab.startsWith("PK")) {
     if (e === "docx") {

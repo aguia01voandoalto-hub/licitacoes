@@ -342,10 +342,22 @@ table.prop input{width:110px;text-align:right}
 
 <section class="view" id="v-inicio"></section>
 
+<section class="view" id="v-farejador" hidden>
+  <h1 class="t">Farejador</h1>
+  <p class="sub">Quem procura as licitações no PNCP. Aqui você confere o que ele vai buscar, inicia a busca e vê o que apareceu de novo.</p>
+  <div id="lista-farejador"></div>
+</section>
+
+<section class="view" id="v-analista" hidden>
+  <h1 class="t">Analista</h1>
+  <p class="sub">Quem lê o edital. Ele aponta prazos, exigências, riscos e multas, e diz se vale participar.</p>
+  <div id="lista-analista"></div>
+</section>
+
 <section class="view" id="v-oportunidades" hidden>
   <div id="empbar2"></div>
   <h1 class="t">Oportunidades</h1>
-  <p class="sub">O que o Farejador encontrou no PNCP dentro das atividades da empresa. Analise, decida e acompanhe cada licitação no quadro.</p>
+  <p class="sub">O quadro de trabalho: do que o Farejador encontrou até a decisão de participar ou descartar.</p>
   <p class="fonte" id="fonte">Carregando oportunidades…</p>
   <div class="tools"><input type="search" id="busca" placeholder="Buscar por objeto, órgão ou cidade" aria-label="Buscar"><select id="ordem" aria-label="Ordenar"><option value="relevancia">Mais relevantes</option><option value="prazo">Prazo mais próximo</option></select></div>
   <div class="tools" id="ufs" aria-label="Filtrar por estado"></div>
@@ -437,7 +449,7 @@ const CNAE_AREAS = /*CNAE_INI*/{
  "2621":["informatica"],"2622":["informatica"],"2631":["telecom"],"2640":["eletro"]
 }/*CNAE_FIM*/;
 const COLS = [["farejadas","Farejadas"],["analise","Em análise"],["participar","Participar"],["descartadas","Descartadas"]];
-const VIEWS = ["inicio","oportunidades","propostas","documentos","empresa"];
+const VIEWS = ["inicio","farejador","oportunidades","analista","propostas","documentos","empresa"];
 const GRUPOS = {fiscal_trabalhista:"Regularidade fiscal e trabalhista",tecnica:"Qualificação técnica",economico_financeira:"Econômico-financeira",juridica:"Habilitação jurídica"};
 const DOCS_PADRAO = [
   ["Cartão CNPJ","juridica"],["Contrato social consolidado","juridica"],
@@ -1112,8 +1124,8 @@ function telaMon(k, i, m) {
 const PAL = {tampo:["#f4f7fb","#d2dae6","#b5c1d2"], metal:["#9aa7ba","#7b899e","#647389"], cad:["#27303d","#1d2530","#151b24"], tela:["#10161a","#0b1013","#080c0e"]};
 const PELE = ["#f2c9a5","#c68a5e","#8d5a3a","#e6b48c"];
 const ENT = [
-  {k:"far", nome:"Farejador", cor:"#1351b4", x:1.0, y:2.0, ir:"oportunidades", txt:m => S.fz.estado === "rodando" ? "buscando " + pctFz() + "%" : m.abertas + " abertas"},
-  {k:"ana", nome:"Analista", cor:"#0c326f", x:6.9, y:1.8, ir:"oportunidades", txt:m => m.analises + " análises"},
+  {k:"far", nome:"Farejador", cor:"#1351b4", x:1.0, y:2.0, ir:"farejador", txt:m => S.fz.estado === "rodando" ? "buscando " + pctFz() + "%" : m.abertas + " abertas"},
+  {k:"ana", nome:"Analista", cor:"#0c326f", x:6.9, y:1.8, ir:"analista", txt:m => m.analises + " análises"},
   {k:"des", nome:"Despachante", cor:"#e0a800", x:1.2, y:6.9, ir:"documentos", txt:m => m.docs.total + " docs"},
   {k:"red", nome:"Redator", cor:"#d9435e", x:6.4, y:6.5, ir:"propostas", txt:m => m.part + " propostas"}];
 
@@ -1490,8 +1502,8 @@ function docWord(corpo, titulo) {
 
 /* ============ TELAS ============ */
 function renderNav(m) {
-  const n = {oportunidades: universo().filter(o => colDe(o) === "farejadas" && vigente(o)).length, propostas: m.part, documentos: m.docs.vence + m.docs.vencida};
-  const nomes = {inicio:"Início", oportunidades:"Oportunidades", propostas:"Propostas", documentos:"Documentos", empresa:"Empresa"};
+  const n = {farejador: universo().filter(o => o.nova && colDe(o) === "farejadas" && vigente(o)).length, oportunidades: universo().filter(o => colDe(o) === "farejadas" && vigente(o)).length, analista: universo().filter(o => colDe(o) === "analise").length, propostas: m.part, documentos: m.docs.vence + m.docs.vencida};
+  const nomes = {inicio:"Início", farejador:"Farejador", oportunidades:"Oportunidades", analista:"Analista", propostas:"Propostas", documentos:"Documentos", empresa:"Empresa"};
   $("#nav").innerHTML = VIEWS.map(v => `<button type="button" data-view="${v}" ${S.view === v ? 'aria-current="page"' : ""}>${nomes[v]}${n[v] ? `<span class="n">${n[v]}</span>` : ""}</button>`).join("");
 }
 
@@ -1620,10 +1632,10 @@ function passos() {
 
 function viewInicio(m) {
   const venc = m.docs.vencida + m.docs.vence;
-  const ag = [["#2ec4b6","Farejador","oportunidades",`${m.abertas} abertas`,"Busca no PNCP e filtra pelas atividades da empresa."],
-    ["#8c9bff","Analista","oportunidades",`${m.analises} análise${m.analises===1?"":"s"} pronta${m.analises===1?"":"s"}`,"Lê o edital e aponta prazos, multas e exigências."],
-    ["#f2a900","Despachante","documentos", m.docs.total ? `${m.docs.total} documentos${venc ? " · " + venc + " pedem atenção" : ""}` : "cofre vazio","Confere certidões e documentos de habilitação."],
-    ["#ff6b9a","Redator","propostas",`${m.part} para preparar`,"Monta proposta e declarações obrigatórias."]];
+  const ag = [["#1351b4","Farejador","farejador",`${m.abertas} abertas`,"Busca no PNCP e filtra pelas atividades da empresa."],
+    ["#0c326f","Analista","analista",`${m.analises} análise${m.analises===1?"":"s"} pronta${m.analises===1?"":"s"}`,"Lê o edital e aponta prazos, multas e exigências."],
+    ["#e0a800","Despachante","documentos", m.docs.total ? `${m.docs.total} documentos${venc ? " · " + venc + " pedem atenção" : ""}` : "cofre vazio","Confere certidões e documentos de habilitação."],
+    ["#d9435e","Redator","propostas",`${m.part} para preparar`,"Monta proposta e declarações obrigatórias."]];
   const prazos = m.prazos.map(o => { const d = diasPara(o.encerramento_proposta); return `<div class="lin"><span class="tag">${esc(o.uf)}</span><span class="o" title="${esc(o.objeto)}">${esc(o.orgao)}</span><span class="d ${d<=3?"hot":d<=7?"mid":"cool"}">${d===0?"hoje":d+" d"}</span></div>`; }).join("");
   const e = emp();
   return empbar() + semBusca() + `<div class="sala"><div class="hud"><span><span class="dot"></span>Escritório ao vivo</span><span><b>4/4</b> agentes em operação</span>${e ? `<span>${esc(e.razao || "Empresa sem nome")}${S.areaSel ? " · " + esc((e.areas.find(a => a.id === S.areaSel) || {}).nome || "") : ""}</span>` : ""}<span>${esc(fonteTexto())}</span></div>
@@ -1635,7 +1647,7 @@ function viewInicio(m) {
 }
 
 function renderOport() {
-  $("#empbar2").innerHTML = empbar() + fzStrip();
+  $("#empbar2").innerHTML = empbar() + (S.fz.estado === "rodando" ? fzStrip() : `<p class="fonte" style="margin:10px 0 0">${S.res[S.empId] ? "Última busca em " + esc(fmtData(S.res[S.empId].quando)) + "." : "Nenhuma busca feita para esta empresa."} <button class="lnk" type="button" data-view="farejador">Abrir o Farejador</button></p>`);
   const U = universo();
   const r = S.res[S.empId];
   $("#fonte").innerHTML = esc(`${fonteTexto()} · ${U.filter(vigente).length} oportunidades`) + (S.demo ? ' <button class="lnk" type="button" data-demo-off>Sair da demonstração</button>' : "") +
@@ -1698,6 +1710,14 @@ function blocoLocais() {
   const n = S.user ? locaisDoNavegador().length : 0; if (!n) return "";
   return `<section class="painel"><h2>Empresas deste navegador</h2><p class="fonte">Há ${n} empresa${n > 1 ? "s" : ""} cadastrada${n > 1 ? "s" : ""} antes do login, só neste navegador. Envie para a sua conta para que acompanhem você em qualquer computador.</p><div><button class="btn2 prim" type="button" data-importar-locais>Enviar para a minha conta (${n})</button></div></section>`;
 }
+function painelOQueBusca(e) {
+  const termosAtivos = [...new Set(e.areas.filter(a => a.ativa).flatMap(a => a.termos))], nUf = e.ufs.length, rP = S.res[e.id];
+  const resumo = `<section class="painel" style="border-color:var(--gold,#e8c53a)"><h2>O que o Farejador vai buscar</h2><p class="fonte">Ao clicar em <b>▶ Iniciar Farejador</b>, ele faz estas duas buscas no PNCP, só em licitações <b>Divulgadas</b> que ainda <b>recebem proposta</b> (encerrando em até ${e.dias} dias):</p>
+    <ol style="margin:6px 0 10px 18px;display:grid;gap:8px;font-size:13px"><li><b>Palavras-chave</b> (rápida, primeiro) em ${nUf === 27 ? "todos os 27 estados" : nUf + " estado" + (nUf === 1 ? "" : "s") + " (" + e.ufs.join(", ") + ")"}: ${(e.palavras || []).length ? (e.palavras || []).map(k => `<b>${esc(k)}</b>`).join(", ") : '<span class="fonte" style="margin:0">nenhuma cadastrada</span>'}</li>
+    <li><b>Atividades</b> (varredura ampla, mais lenta) nos mesmos estados: ${termosAtivos.length ? termosAtivos.map(k => `<b>${esc(k)}</b>`).join(", ") : '<span class="fonte" style="margin:0">nenhuma atividade ativa</span>'}</li></ol>
+    <p class="fonte" style="margin:0">${(e.evitar || []).length ? "Escondendo sempre: " + e.evitar.map(esc).join(", ") + ". " : ""}${rP ? "Última busca: " + esc(fmtData(rP.quando)) + " (" + rP.itens.length + " licitações guardadas)." : "Ainda não houve busca para esta empresa."} Para só as palavras-chave, use o botão em “2 · Palavras-chave”.</p></section>`;
+  return resumo;
+}
 function viewEmpresa() {
   const e = emp();
   const lista = `<section class="painel"><h2>Empresas cadastradas</h2><div class="emps">${S.empresas.map(x => `<div class="empc ${x.id === S.empId ? "on" : ""}"><button type="button" class="empc-b" data-emp-sel="${x.id}"><b>${esc(x.razao || "Empresa sem nome")}</b><span>${esc(x.cnpj || "sem CNPJ")} · ${x.areas.filter(a => a.ativa).length} áreas de busca${x.id === S.empId ? " · ativa" : ""}</span></button><button class="acao" type="button" data-emp-del="${x.id}">${S.confirmaDel === x.id ? "Confirmar exclusão" : "Excluir"}</button></div>`).join("") || '<div class="vazio">Nenhuma empresa ainda. Importe o Cartão CNPJ abaixo ou crie uma empresa em branco.</div>'}</div>
@@ -1729,11 +1749,7 @@ function viewEmpresa() {
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <label style="display:grid;gap:3px;max-width:260px;font-size:12px;color:var(--muted)">Propostas encerrando nos próximos<select data-dias>${[15,30,45,60,90].map(d => `<option value="${d}" ${e.dias === d ? "selected" : ""}>${d} dias</option>`).join("")}</select></label>
     <div><button class="btn2 prim" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div></section>`;
-  const termosAtivos = [...new Set(e.areas.filter(a => a.ativa).flatMap(a => a.termos))], nUf = e.ufs.length, rP = S.res[e.id];
-  const resumo = `<section class="painel" style="border-color:var(--gold,#e8c53a)"><h2>O que o Farejador vai buscar</h2><p class="fonte">Ao clicar em <b>▶ Iniciar Farejador</b>, ele faz estas duas buscas no PNCP, só em licitações <b>Divulgadas</b> que ainda <b>recebem proposta</b> (encerrando em até ${e.dias} dias):</p>
-    <ol style="margin:6px 0 10px 18px;display:grid;gap:8px;font-size:13px"><li><b>Palavras-chave</b> (rápida, primeiro) em ${nUf === 27 ? "todos os 27 estados" : nUf + " estado" + (nUf === 1 ? "" : "s") + " (" + e.ufs.join(", ") + ")"}: ${(e.palavras || []).length ? (e.palavras || []).map(k => `<b>${esc(k)}</b>`).join(", ") : '<span class="fonte" style="margin:0">nenhuma cadastrada</span>'}</li>
-    <li><b>Atividades</b> (varredura ampla, mais lenta) nos mesmos estados: ${termosAtivos.length ? termosAtivos.map(k => `<b>${esc(k)}</b>`).join(", ") : '<span class="fonte" style="margin:0">nenhuma atividade ativa</span>'}</li></ol>
-    <p class="fonte" style="margin:0">${(e.evitar || []).length ? "Escondendo sempre: " + e.evitar.map(esc).join(", ") + ". " : ""}${rP ? "Última busca: " + esc(fmtData(rP.quando)) + " (" + rP.itens.length + " licitações guardadas)." : "Ainda não houve busca para esta empresa."} Para só as palavras-chave, use o botão em “2 · Palavras-chave”.</p></section>`;
+  const resumo = painelOQueBusca(e);
   return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${resumo}${ar}${palavrasBox(e)}${onde}${ev}${cfgAnalista()}`;
 }
 
@@ -1742,6 +1758,8 @@ function render() {
   const m = metricas(); renderNav(m); $("#hdr-emp").innerHTML = hdrEmp();
   VIEWS.forEach(v => $("#v-" + v).hidden = v !== S.view);
   if (S.view === "inicio") { $("#v-inicio").innerHTML = viewInicio(m); const w = $(".cena-wrap"); if (w && !S.centrou) { w.scrollLeft = (w.scrollWidth - w.clientWidth) / 2; S.centrou = true; } }
+  if (S.view === "farejador") $("#lista-farejador").innerHTML = viewFarejador();
+  if (S.view === "analista") $("#lista-analista").innerHTML = viewAnalista();
   if (S.view === "oportunidades") renderOport();
   if (S.view === "propostas") $("#lista-propostas").innerHTML = viewPropostas();
   if (S.view === "documentos") $("#lista-docs").innerHTML = viewDocumentos();
@@ -1910,5 +1928,31 @@ $("#busca").addEventListener("input", ev => { S.q = ev.target.value; renderOport
 window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
 
 (async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; recomporOps(); render(); await iniciarConta(); recomporOps(); render(); await carregar(); render(); })();
+
+/* ============ TELA DO FAREJADOR E TELA DO ANALISTA ============ */
+function viewFarejador() {
+  const e = emp(); if (!e) return empbar();
+  const r = S.res[e.id], novas = universo().filter(o => o.nova && colDe(o) === "farejadas" && vigente(o)).sort((a, b) => (b._pts || 0) - (a._pts || 0));
+  const por = r?.porPalavra || {};
+  const hist = r ? `<section class="painel"><h2>Resultado da última busca</h2><div class="kpis" style="margin:0"><div class="kpi"><b>${r.itens.length.toLocaleString("pt-BR")}</b><span>licitações encontradas</span></div><div class="kpi"><b>${r.novas ?? 0}</b><span>novas desde a busca anterior</span></div><div class="kpi"><b>${Object.values(por).reduce((x, y) => x + y, 0)}</b><span>vieram das palavras-chave</span></div></div>
+    <div class="fonte" style="margin:8px 0 0">${novas.length ? "As " + Math.min(novas.length, 12) + " novas mais relevantes:" : "Nenhuma novidade desde a busca anterior."}</div>${novas.slice(0, 12).map(o => `<button class="lin" type="button" data-abrir="${esc(o.id)}" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left;cursor:pointer;font:inherit;color:inherit"><span class="tag">${esc(o.uf)}</span><span class="o" title="${esc(o.objeto)}">${esc(o.orgao)} · ${esc(corta(o.objeto, 80))}</span><span class="d">${esc(rotuloPrazo(diasPara(o.encerramento_proposta)))}</span></button>`).join("")}
+    ${novas.length ? `<div style="margin-top:8px"><button class="btn2" type="button" data-view="oportunidades" data-so-novas-ir>Ver todas no quadro</button></div>` : ""}</section>` : "";
+  return empbar() + fzStrip() + `<div class="emp-grid"><div>${painelOQueBusca(e)}${hist}</div><div>${palavrasBox(e)}</div></div>`;
+}
+function viewAnalista() {
+  const e = emp(); if (!e) return empbar();
+  const U = universo(), fila = U.filter(o => colDe(o) === "analise"), prontas = U.filter(o => S.analises[o.id]), espera = U.filter(o => decDe(o.id)?.enviado_em && !decDe(o.id)?.resposta);
+  const sug = U.filter(o => colDe(o) === "farejadas" && vigente(o) && !S.analises[o.id] && o.arquivos_api).sort((a, b) => (b._pts || 0) - (a._pts || 0) || (a.encerramento_proposta || "9").localeCompare(b.encerramento_proposta || "9")).slice(0, 8);
+  const recRot = {participar:"Participar", participar_com_ressalvas:"Com ressalvas", nao_participar:"Não participar"}, recCl = {participar:"ok", participar_com_ressalvas:"", nao_participar:"warn"};
+  const linha = (o, acao) => `<div class="lin"><span class="tag">${esc(o.uf)}</span><button class="lnk" type="button" data-abrir="${esc(o.id)}" style="text-align:left;text-decoration:none;color:inherit;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.objeto)}">${esc(o.orgao)} · ${esc(corta(o.objeto, 70))}</button>${acao}</div>`;
+  const btn = o => S.analisando[o.id] ? '<span class="pill">lendo o edital…</span>' : S.analises[o.id] ? `<span class="pill ${recCl[S.analises[o.id].recomendacao] || ""}">${esc(recRot[S.analises[o.id].recomendacao] || "pronta")}</span>` : lerToken() && S.user ? `<button class="acao" type="button" data-analisar="${esc(o.id)}" style="flex:none">Analisar</button>` : "";
+  const sem = !lerToken() || !S.user;
+  return empbar() + `<div class="kpis"><div class="kpi"><b>${prontas.length}</b><span>análises prontas desta empresa</span></div><div class="kpi"><b>${fila.length}</b><span>em análise (aguardando você)</span></div><div class="kpi"><b>${espera.length}</b><span>aguardando decisão do responsável</span></div></div>` +
+    (sem ? `<div class="aviso" style="margin-bottom:12px">${!S.user ? "Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa." : "Falta o código de acesso do Analista. Informe em Empresa → Configuração do Analista."} <button class="lnk" type="button" data-view="empresa">Abrir a configuração</button></div>` : "") +
+    `<div class="paineis" style="grid-template-columns:1fr 1fr">
+    <section class="painel"><h2>Para analisar agora</h2><p class="fonte">As oportunidades mais relevantes que ainda não foram lidas.</p>${sug.map(o => linha(o, btn(o))).join("") || '<div class="vazio">Nada pendente. Rode o Farejador para trazer mais oportunidades.</div>'}</section>
+    <section class="painel"><h2>Em análise</h2><p class="fonte">O que você moveu para análise.</p>${fila.map(o => linha(o, btn(o))).join("") || '<div class="vazio">Nenhuma oportunidade em análise.</div>'}</section></div>
+    <section class="painel" style="margin-top:14px"><h2>Análises prontas</h2>${prontas.length ? prontas.map(o => { const a = S.analises[o.id], alt = (a.riscos || []).filter(x => x.gravidade === "alta").length; return linha(o, `<span class="pill ${recCl[a.recomendacao] || ""}">${esc(recRot[a.recomendacao] || "pronta")}</span><span class="pill ${alt ? "warn" : ""}">${alt} risco${alt === 1 ? "" : "s"} alto${alt === 1 ? "" : "s"}</span>`); }).join("") : '<div class="vazio">Nenhuma análise pronta ainda. Abra uma oportunidade e clique em Analisar este edital.</div>'}</section>`;
+}
 
 </script>
