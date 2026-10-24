@@ -714,15 +714,13 @@ async function iniciarFarejador(modo) {
   // 1) palavras-chave cadastradas: busca do portal, um estado por vez
   const porPalavra = f.porPalavra, dePalavra = new Map();
   if (palavras.length) {
-    f.fasePalavras = true; f.kwTotal = palavras.length * e.ufs.length; f.kwFeitas = 0;
+    f.fasePalavras = true; f.kwTotal = palavras.length; f.kwFeitas = 0;
     try {
       for (const kw of palavras) {
         porPalavra[kw] = 0;
-        for (const uf of e.ufs) {
-          if (f.parar) break;
-          for (const it of await buscaPalavraPncp(kw, uf, f)) { if (!dePalavra.has(it.id)) { porPalavra[kw]++; if (!achadas.has(it.id)) { dePalavra.set(it.id, it); f.achadas++; } } }
-          f.kwFeitas++; atualizarProgresso();
-        }
+        if (f.parar) break;
+        for (const it of await buscaPalavraTodos(kw, e.ufs, f)) { if (!dePalavra.has(it.id)) { porPalavra[kw]++; if (!achadas.has(it.id)) { dePalavra.set(it.id, it); f.achadas++; } } }
+        f.kwFeitas++; atualizarProgresso();
       }
     } catch (err) { f.erro = err.message || String(err); }
     f.fasePalavras = false;
@@ -833,6 +831,24 @@ function itemDaBusca(x, kw) {
     arquivos_api:`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${seq}/arquivos`, numero_compra:x.numero, ano:Number(x.ano), processo:null, via:"palavra", palavra:kw};
 }
 // Uma palavra-chave cadastrada, em um estado: a mesma busca do portal, só licitações recebendo ou a receber proposta.
+// Com muitos estados marcados é bem mais rápido pedir o Brasil todo (poucas páginas) e filtrar o estado aqui, em vez de um pedido por estado.
+async function buscaPalavraTodos(kw, ufs, f) {
+  if (ufs.length <= 6) { const r = []; for (const uf of ufs) { if (f.parar) break; r.push(...await buscaPalavraPncp(kw, uf, f)); } return r; }
+  const achados = [], ok = new Set(ufs);
+  for (let pg = 1; pg <= 20 && !f.parar; pg++) {   // até 1000 por palavra
+    f.msg = `Palavra-chave “${kw}” · Brasil · página ${pg}`;
+    const p = new URLSearchParams({q:kw, tipos_documento:"edital", ordenacao:"-data", status:"recebendo_proposta", pagina:pg, tam_pagina:50});
+    const d = await pncpGet(PNCP_BUSCA + "?" + p, f);
+    for (const x of d.items || []) {
+      if (String(x.situacao_id) !== "1" || x.cancelado) { f.ignoradas = (f.ignoradas || 0) + 1; continue; }
+      if (!ok.has(x.uf)) continue;
+      const it = itemDaBusca(x, kw); if (vigente(it)) achados.push(it);
+    }
+    if (pg * 50 >= (d.total || 0)) break;
+    await dormir(300);
+  }
+  return achados;
+}
 async function buscaPalavraPncp(kw, uf, f) {
   const achados = [];
   for (let pg = 1; pg <= 3 && !f.parar; pg++) {   // até 150 por palavra e estado
