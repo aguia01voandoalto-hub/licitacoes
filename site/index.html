@@ -297,6 +297,12 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 
 .tchip small{font:600 10px var(--f-mono);background:var(--accent-soft);color:var(--accent-text);border-radius:999px;padding:1px 6px;margin-left:4px}
 
+.resumo{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin-top:8px}
+.resumo summary{padding:11px 14px;cursor:pointer;font:600 13px var(--f-display);letter-spacing:.04em;text-transform:uppercase}
+.res-c{padding:0 14px 14px;display:grid;gap:6px}
+.res-c h4{font:700 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);margin:8px 0 2px}
+.res-a{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -573,7 +579,7 @@ function entre(t, ini, fins) {
 function lerTexto(txt) {
   const t = txt.replace(/\s+/g, " "), r = {cnaes:[]};
   r.cnpj = (t.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/) || [""])[0];
-  const L = /(?:NOME EMPRESARIAL|TÍTULO DO ESTABELECIMENTO|PORTE|CÓDIGO E DESCRIÇÃO|LOGRADOURO|NÚMERO|COMPLEMENTO|CEP\b|BAIRRO|MUNICÍPIO|UF\b|ENDEREÇO ELETRÔNICO|TELEFONE|ENTE FEDERATIVO|SITUAÇÃO CADASTRAL|DATA DA|MOTIVO|Emitido|Aprovado pela)/;
+  const L = /(?:NOME EMPRESARIAL|TÍTULO DO ESTABELECIMENTO|PORTE|CÓDIGO E DESCRIÇÃO|LOGRADOURO|NÚMERO|COMPLEMENTO|CEP\b|BAIRRO|MUNICÍPIO|UF\b|ENDEREÇO ELETRÔNICO|TELEFONE|ENTE FEDERATIVO|SITUAÇÃO CADASTRAL|DATA DA|DATA DE|MOTIVO|Emitido|Aprovado pela)/;
   r.razao = entre(t, /NOME EMPRESARIAL\s*/i, [L]);
   // fantasia e porte: o cartão traz os dois rótulos lado a lado e depois os valores ("ALFA INFO ME")
   let fant = entre(t, /\(NOME DE FANTASIA\)\s*/i, [L]), seg = entre(t, /\bPORTE\s*/, [L]);
@@ -735,7 +741,7 @@ async function iniciarFarejador() {
       }
     } catch (err) { f.erro = err.message || String(err); }
   }
-  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, itens:[...achadas.values(), ...dePalavra.values()]};
+  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, mods:[...e.mods], dias:e.dias, lidas:f.lidas, ignoradas:f.ignoradas || 0, duracao:Date.now() - f.ini, itens:[...achadas.values(), ...dePalavra.values()]};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
   const total = achadas.size + dePalavra.size;
@@ -1241,6 +1247,25 @@ function atualizarProgresso(forcar) {
   document.querySelectorAll(".fz-msg").forEach(m => m.textContent = f.msg + " · " + detalheFz());
   const sv = $(".cena-wrap svg"); if (sv && S.view === "inicio" && !forcar) sv.innerHTML = sala(metricas());
 }
+function resumoBusca(e) {   // o que foi buscado na última busca desta empresa
+  const r = S.res[e.id]; if (!r || S.demo) return "";
+  const itens = r.itens.filter(o => o.via !== "palavra"), n = itens.length, pct = x => n ? Math.round(100 * x / n) : 0;
+  const usados = new Set((r.termos || []).map(norm)), cont = {};
+  for (const o of itens) { const tx = o._n || (o._n = norm(o.objeto)); for (const a of e.areas) for (const k of a.termos) if (usados.has(norm(k)) && reTermo(k).test(tx)) cont[k] = (cont[k] || 0) + 1; }
+  const areas = e.areas.filter(a => a.ativa && a.termos.some(k => usados.has(norm(k))));
+  const genericos = Object.entries(cont).filter(([k, c]) => n >= 20 && c / n > 0.25).sort((a, b) => b[1] - a[1]);
+  const mods = (r.mods || e.mods).map(m => MODALIDADES[m] || "modalidade " + m).join(", "), por = r.porPalavra || {};
+  return `<details class="resumo"><summary>O que foi buscado na última busca</summary><div class="res-c">
+    <dl class="kv"><dt>Quando</dt><dd>${esc(fmtData(r.quando))}${r.parcial ? " (parcial)" : ""}${r.duracao ? " · levou " + mmss(r.duracao) : ""}</dd>
+    <dt>Estados</dt><dd>${(r.ufs || []).length === 27 ? "todos os 27" : esc((r.ufs || []).join(", "))}</dd>
+    <dt>Modalidades</dt><dd>${esc(mods)}</dd>
+    <dt>Situação</dt><dd>Recebendo ou a receber proposta, com encerramento em até ${r.dias || e.dias} dias; revogadas, anuladas e suspensas descartadas</dd>
+    <dt>Lidas</dt><dd>${r.lidas != null ? r.lidas.toLocaleString("pt-BR") + " licitações, " + (r.ignoradas || 0) + " descartadas" : "—"}</dd>
+    <dt>Encontradas</dt><dd>${r.itens.length.toLocaleString("pt-BR")} (${n} pelas atividades, ${r.itens.length - n} pelas palavras-chave)</dd></dl>
+    ${areas.length ? `<h4>Atividades pesquisadas</h4>` + areas.map(a => `<div class="res-a"><b>${esc(a.nome)}</b> ${a.termos.filter(k => usados.has(norm(k))).map(k => `<span class="tchip">${esc(k)} <small>${(cont[k] || 0).toLocaleString("pt-BR")}</small></span>`).join(" ")}</div>`).join("") : ""}
+    ${(r.palavras || []).length ? `<h4>Palavras-chave</h4><div class="res-a">${r.palavras.map(k => `<span class="tchip">${esc(k)} <small>${por[k] ?? 0}</small></span>`).join(" ")}</div>` : ""}
+    ${genericos.length ? `<div class="aviso" style="margin-top:8px">Palavras muito genéricas: ${genericos.map(([k, c]) => `“${esc(k)}” trouxe ${c.toLocaleString("pt-BR")} licitações (${pct(c)}%)`).join("; ")}. Isso enche o quadro de coisas sem relação com a atividade e deixa a busca lenta. Prefira expressões específicas (por exemplo, “instalação de antenas”) ou cadastre-as em Palavras-chave.</div>` : ""}</div></details>`;
+}
 function fzStrip() {
   const e = emp(); if (!e) return "";
   const f = S.fz, rodando = f.estado === "rodando", r = S.res[e.id], meu = !f.empId || f.empId === e.id || f.estado === "erro";
@@ -1248,7 +1273,7 @@ function fzStrip() {
   return `<section class="fz"><div class="fz-b">${rodando ? '<button class="btn2 big stop" type="button" data-fz-parar>■ Parar a busca</button>' : '<button class="btn2 prim big" type="button" data-fz-iniciar>▶ Iniciar Farejador</button>'}</div>
     <div class="fz-t"><b>Farejador de ${esc(e.razao || "a empresa")}</b><span>Estados: ${esc(ufs)} · propostas nos próximos ${e.dias} dias · <button class="lnk" type="button" data-view="empresa">alterar</button></span>
     <span>${r ? "Última busca: " + fmtData(r.quando) + " · " + r.itens.length + " licitações encontradas" : "Ainda não fez nenhuma busca para esta empresa."}</span></div>
-    <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + detalheFz() : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>`;
+    <div class="fz-p"><div class="bar"><i class="fz-bar" style="width:${rodando ? pctFz() : 0}%"></i></div><div class="fz-msg ${f.estado === "erro" ? "erro" : ""}" role="status">${meu && f.msg ? esc(f.msg + (rodando ? " · " + detalheFz() : "")) : "Pronto para buscar no PNCP o que a empresa vende."}</div></div></section>` + resumoBusca(e);
 }
 function hdrEmp() {
   if (!S.empresas.length) return "";
