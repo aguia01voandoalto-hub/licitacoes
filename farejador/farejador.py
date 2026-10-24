@@ -110,6 +110,8 @@ def main():
         saida, lidas = [], 0
         for r in buscar(uf, mod, ate):
             lidas += 1
+            if r.get("situacaoCompraId") != 1:   # só "Divulgada no PNCP": descarta revogada, anulada e suspensa
+                continue
             item = converter(r, 0, [])
             if item["encerramento_proposta"] and datetime.fromisoformat(item["encerramento_proposta"]) < agora:
                 continue
