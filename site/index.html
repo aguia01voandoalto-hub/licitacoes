@@ -282,6 +282,19 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 .btn2[disabled]{opacity:.5;cursor:not-allowed}
 @media (max-width:640px){.kwr{flex-direction:column;align-items:stretch}.kwr-a{justify-content:flex-start}}
 
+/* conta e login */
+.hdr-user{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);min-width:0}
+.hdr-user .usr{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sync{font:500 11px var(--f-mono);color:var(--ok)}
+.sync.erro{color:var(--warn)}
+.login,.splash{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;place-items:center;padding:16px}
+.login-card{width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;display:grid;gap:12px}
+.login-card h1{font:700 22px var(--f-display);margin:4px 0 0;text-transform:uppercase;letter-spacing:.02em}
+.login-card p{margin:0;color:var(--muted);font-size:13px}
+.login-card label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.login-card input{font:15px var(--f-body);color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:11px 12px;width:100%}
+.splash{font:600 14px var(--f-mono);color:var(--muted)}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -290,6 +303,7 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
   <div class="brand"><i>§</i>Time de Licitações</div>
   <div id="hdr-emp"></div>
   <nav id="nav" aria-label="Telas"></nav>
+  <div id="hdr-user" class="hdr-user"></div>
 </header>
 
 <section class="view" id="v-inicio"></section>
@@ -330,7 +344,22 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 </div>
 <div class="veu" id="veu" hidden data-fechar></div>
 <div class="modal" id="modal" hidden></div>
+<div class="login" id="login" hidden>
+  <div class="login-card" role="dialog" aria-label="Entrar">
+    <div class="brand"><i>§</i>Time de Licitações</div>
+    <h1>Entrar</h1>
+    <p>Use o e-mail e a senha da sua conta. Suas empresas e buscas ficam salvas nela e acompanham você em qualquer computador.</p>
+    <label>E-mail<input id="lg-email" type="email" autocomplete="username" inputmode="email"></label>
+    <label>Senha<input id="lg-senha" type="password" autocomplete="current-password"></label>
+    <div class="aviso" id="lg-msg" role="alert" hidden></div>
+    <button class="btn2 prim big" type="button" id="lg-entrar" data-entrar>Entrar</button>
+    <p>O acesso é por convite. Se ainda não tem conta, peça ao administrador.</p>
+    <button class="lnk" type="button" data-modo-local style="justify-self:start">Usar sem entrar (dados só neste navegador)</button>
+  </div>
+</div>
+<div class="splash" id="splash">Carregando sua conta…</div>
 <aside class="gaveta" id="gaveta" hidden tabindex="-1" aria-label="Detalhes da oportunidade"></aside>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.js"></script>
 <script>
 const SB_URL = "https://qywemhkqrpjtrcdorxub.supabase.co";
 const SB_KEY = "sb_publishable__ck00oz4LaKprpGUyYb6ag_sNO-oRoO"; // chave pública; o RLS só permite leitura
@@ -405,10 +434,11 @@ try {
   }
 } catch(e){}
 const lerRes = id => { try { return JSON.parse(localStorage.getItem("tl_res_" + id) || "null"); } catch(e) { return null; } };
-const gravarRes = (id, r) => { try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
+const gravarRes = (id, r) => { if (S.user) { _sync.busca.add(id); agendarSync(); return true; } try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
 S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
 try { S.compacta = localStorage.getItem("tl_ui_compacta") === "1"; } catch(e) {}
-const salvar = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs})); } catch(e){} };
+const salvarLocal = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs})); } catch(e){} };
+const salvar = () => { if (S.user) { try { localStorage.setItem("tl_empresa_" + S.user.id, S.empId || ""); } catch(e) {} agendarSync(); } else salvarLocal(); };
 
 const emp = () => S.empresas.find(e => e.id === S.empId) || null;
 const docsAtivos = () => emp()?.docs || [];
@@ -442,7 +472,7 @@ function sugerirAreas(e) {
   return n;
 }
 function novaEmpresa(dados = {}) {
-  const e = {id:novoId(), razao:"", fantasia:"", cnpj:"", porte:"", end:"", rep:"", cargo:"", cpf:"", cnaes:[], areas:[], evitar:[], docs:[], ufs:[], mods:[6, 8], dias:45, ...dados};
+  const e = {id:novoUuid(), razao:"", fantasia:"", cnpj:"", porte:"", end:"", rep:"", cargo:"", cpf:"", cnaes:[], areas:[], evitar:[], docs:[], ufs:[], mods:[6, 8], dias:45, ...dados};
   S.empresas.push(e); S.empId = e.id; S.areaSel = null; S.res[e.id] = null; recomporOps(); return e;
 }
 
@@ -777,6 +807,131 @@ function adicionarDaBusca(ids) {
   for (const it of k.itens) if (ids.includes(it.id) && !tem.has(it.id)) { r.itens.push(it); n++; }
   if (n) { gravarRes(e.id, r); recomporOps(); }
   return n;
+}
+
+
+/* ============ CONTA E NUVEM (Supabase Auth + licitacoes.empresas) ============ */
+const novoUuid = () => crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); });
+const ehUuid = s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
+let SB = null;
+const _sync = {t:0, rodando:false, busca:new Set(), apagar:new Set(), ult:{}, falhas:0};
+S.user = null; S.modoLocal = false; S.auth = "carregando"; S.nuvem = ""; S.login = {msg:"", ocupado:false};
+
+function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; return e; }
+const dadosDe = e => { const {id, ...d} = e; return d; };
+const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}});
+const limparMemoria = () => { S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.docsLic = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
+
+function msgAuth(err) {
+  const m = String(err && err.message || err);
+  if (m === "SEM_ACESSO") return "Sua conta existe, mas ainda não foi liberada para o Time de Licitações. Peça acesso ao administrador.";
+  if (/invalid login|invalid credentials/i.test(m)) return "E-mail ou senha incorretos.";
+  if (/email not confirmed/i.test(m)) return "O e-mail dessa conta ainda não foi confirmado.";
+  if (err instanceof TypeError || /failed to fetch|network/i.test(m)) return "Não consegui falar com o servidor. Confira a conexão (na visualização do claude.ai o login fica bloqueado).";
+  return m;
+}
+
+/* ----- salvar na nuvem ----- */
+function atualizarStatus() {
+  const t = {ok:"Salvo na sua conta", pendente:"Salvando…", sincronizando:"Salvando…", erro:"Não consegui salvar (tentando de novo)"}[S.nuvem] || "";
+  document.querySelectorAll(".sync").forEach(el => { el.textContent = t; el.className = "sync " + (S.nuvem === "erro" ? "erro" : ""); el.title = S.nuvem === "erro" ? (S.nuvemMsg || "") : ""; });
+}
+function agendarSync() { if (!S.user) return; clearTimeout(_sync.t); S.nuvem = "pendente"; atualizarStatus(); _sync.t = setTimeout(sincronizar, 900); }
+async function sincronizar() {
+  if (!S.user) return;
+  if (_sync.rodando) { clearTimeout(_sync.t); _sync.t = setTimeout(sincronizar, 900); return; }
+  _sync.rodando = true; S.nuvem = "sincronizando"; atualizarStatus();
+  try {
+    for (const id of [..._sync.apagar]) { const {error} = await SB.from("empresas").delete().eq("id", id); if (error) throw error; _sync.apagar.delete(id); }
+    for (const e of S.empresas) {
+      if (!ehUuid(e.id)) continue;
+      const dado = JSON.stringify([dadosDe(e), estadoDe(e.id)]), comBusca = _sync.busca.has(e.id);
+      if (_sync.ult[e.id] === dado && !comBusca) continue;
+      const row = {id:e.id, dados:dadosDe(e), estado:estadoDe(e.id)}; if (comBusca) row.busca = S.res[e.id] || null;
+      const {error} = await SB.from("empresas").upsert(row, {onConflict:"id"}); if (error) throw error;
+      _sync.ult[e.id] = dado; _sync.busca.delete(e.id);
+    }
+    S.nuvem = "ok"; _sync.falhas = 0;
+  } catch (err) { S.nuvem = "erro"; S.nuvemMsg = err.message || String(err); _sync.falhas++; clearTimeout(_sync.t); _sync.t = setTimeout(sincronizar, Math.min(60000, 4000 * _sync.falhas)); }
+  finally { _sync.rodando = false; atualizarStatus(); }
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden && S.user && S.nuvem === "pendente") { clearTimeout(_sync.t); sincronizar(); } });
+
+/* ----- carregar da nuvem ----- */
+async function carregarNuvem() {
+  S.nuvem = "sincronizando";
+  const {data, error} = await SB.from("empresas").select("id,dados,estado,busca").order("criado_em");
+  if (error) throw error;
+  limparMemoria();
+  S.empresas = data.map(r => normEmpresa({...r.dados, id:r.id}));
+  for (const r of data) { S.col[r.id] = r.estado?.col || {}; S.obs[r.id] = r.estado?.obs || {}; S.res[r.id] = r.busca || null; _sync.ult[r.id] = JSON.stringify([dadosDe(S.empresas.find(e => e.id === r.id)), estadoDe(r.id)]); }
+  try { const salvo = localStorage.getItem("tl_empresa_" + S.user.id); if (salvo && S.empresas.some(e => e.id === salvo)) S.empId = salvo; } catch(e) {}
+  S.empId = S.empId || S.empresas[0]?.id || null;
+  S.nuvem = "ok"; recomporOps();
+}
+/* ----- empresas que já estavam neste navegador (antes do login) ----- */
+function locaisDoNavegador() { try { const j = JSON.parse(localStorage.getItem("tl_v2") || "null"); return (j?.empresas || []).filter(e => e.razao || e.cnpj || (e.areas || []).length); } catch(e) { return []; } }
+async function importarLocais() {
+  let j = null; try { j = JSON.parse(localStorage.getItem("tl_v2") || "null"); } catch(e) {}
+  const lista = locaisDoNavegador(); let n = 0;
+  for (const e0 of lista) {
+    const velho = e0.id, novo = ehUuid(velho) ? velho : novoUuid();
+    if (S.empresas.some(x => x.id === novo)) continue;
+    S.empresas.push(normEmpresa({...e0, id:novo})); S.col[novo] = j?.col?.[velho] || {}; S.obs[novo] = j?.obs?.[velho] || {};
+    S.res[novo] = lerRes(velho); if (S.res[novo]) _sync.busca.add(novo); n++;
+  }
+  if (!n) return 0;
+  S.empId = S.empId || S.empresas[0].id; clearTimeout(_sync.t); await sincronizar();
+  if (S.nuvem === "ok") { try { localStorage.removeItem("tl_v2"); lista.forEach(e => localStorage.removeItem("tl_res_" + e.id)); } catch(e) {} }
+  recomporOps(); return n;
+}
+function lerLocal() {   // modo sem conta: volta a ler o que está neste navegador
+  limparMemoria();
+  try { const j = JSON.parse(localStorage.getItem("tl_v2") || "null"); if (j) { S.empresas = (j.empresas || []).map(normEmpresa); S.empId = j.empId || null; S.col = j.col || {}; S.obs = j.obs || {}; } } catch(e) {}
+  S.empresas.forEach(e => { S.res[e.id] = lerRes(e.id); });
+  S.empId = S.empresas.some(e => e.id === S.empId) ? S.empId : (S.empresas[0]?.id || null); recomporOps();
+}
+
+/* ----- entrar e sair ----- */
+async function aposLogin(user) {
+  const {data, error} = await SB.from("acesso").select("user_id").eq("user_id", user.id).maybeSingle();
+  if (error) throw error;
+  if (!data) { await SB.auth.signOut(); throw new Error("SEM_ACESSO"); }
+  S.user = user; await carregarNuvem();
+  if (!S.empresas.length && locaisDoNavegador().length) { const n = await importarLocais(); if (n) S.msg = `${n} empresa${n > 1 ? "s" : ""} deste navegador ${n > 1 ? "foram enviadas" : "foi enviada"} para a sua conta.`; }
+  S.auth = "ok"; S.modoLocal = false; S.login = {msg:"", ocupado:false};
+}
+async function entrar(email, senha) {
+  if (!email || !senha) { S.login = {msg:"Digite o e-mail e a senha.", ocupado:false}; return render(); }
+  S.login = {msg:"Entrando…", ocupado:true}; render();
+  try {
+    const {data, error} = await SB.auth.signInWithPassword({email, password:senha});
+    if (error) throw error;
+    await aposLogin(data.user); await carregar(); render();
+  } catch (err) { S.login = {msg:msgAuth(err), ocupado:false}; S.auth = "login"; render(); }
+}
+async function sair() {
+  clearTimeout(_sync.t); try { await sincronizar(); } catch(e) {}
+  try { await SB.auth.signOut(); } catch(e) {}
+  S.user = null; limparMemoria(); S.auth = "login"; S.nuvem = ""; S.msg = ""; render();
+}
+async function iniciarConta() {
+  if (SNAPSHOT || !window.supabase) { S.auth = "local"; S.modoLocal = true; return; }   // visualização do claude.ai (bloqueada) ou biblioteca indisponível
+  SB = supabase.createClient(SB_URL, SB_KEY, {db:{schema:"licitacoes"}, auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:false}});
+  SB.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && S.user) { S.user = null; limparMemoria(); S.auth = "login"; render(); } });
+  let sessao = null; try { sessao = (await SB.auth.getSession()).data.session; } catch(e) {}
+  if (!sessao) { S.auth = "login"; return; }
+  S.auth = "verificando"; render();
+  try { await aposLogin(sessao.user); } catch (err) { S.login = {msg:msgAuth(err), ocupado:false}; S.auth = "login"; }
+}
+function renderConta() {
+  $("#login").hidden = S.auth !== "login";
+  $("#splash").hidden = !(S.auth === "carregando" || S.auth === "verificando");
+  const m = $("#lg-msg"); if (m) { m.textContent = S.login.msg || ""; m.hidden = !S.login.msg; }
+  const b = $("#lg-entrar"); if (b) b.disabled = !!S.login.ocupado;
+  $("#hdr-user").innerHTML = S.user ? `<span class="usr" title="${esc(S.user.email)}">${esc(S.user.email)}</span><span class="sync"></span><button class="lnk" type="button" data-sair>Sair</button>`
+    : S.auth === "local" ? `<span class="usr">${SNAPSHOT ? "Pré-visualização" : "Sem conta: dados só neste navegador"}</span>${SNAPSHOT ? "" : '<button class="lnk" type="button" data-entrar-tela>Entrar</button>'}` : "";
+  atualizarStatus();
 }
 
 /* ============ SALA DE CONTROLE (SVG isométrico) ============ */
@@ -1198,6 +1353,10 @@ function cfgAnalista() {
     <div class="form" style="grid-template-columns:1fr auto auto;align-items:end;max-width:700px"><label>Código de acesso<input id="tok_analista" type="password" autocomplete="off" value="${esc(lerToken())}"></label><button class="btn2" type="button" data-salvar-token>Salvar</button><button class="btn2 prim" type="button" data-testar-token>Testar conexão</button></div>
     ${S.msgTok ? `<div class="aviso info" role="status">${esc(S.msgTok)}</div>` : ""}</section>`;
 }
+function blocoLocais() {
+  const n = S.user ? locaisDoNavegador().length : 0; if (!n) return "";
+  return `<section class="painel"><h2>Empresas deste navegador</h2><p class="fonte">Há ${n} empresa${n > 1 ? "s" : ""} cadastrada${n > 1 ? "s" : ""} antes do login, só neste navegador. Envie para a sua conta para que acompanhem você em qualquer computador.</p><div><button class="btn2 prim" type="button" data-importar-locais>Enviar para a minha conta (${n})</button></div></section>`;
+}
 function viewEmpresa() {
   const e = emp();
   const lista = `<section class="painel"><h2>Empresas cadastradas</h2><div class="emps">${S.empresas.map(x => `<div class="empc ${x.id === S.empId ? "on" : ""}"><button type="button" class="empc-b" data-emp-sel="${x.id}"><b>${esc(x.razao || "Empresa sem nome")}</b><span>${esc(x.cnpj || "sem CNPJ")} · ${x.areas.filter(a => a.ativa).length} áreas de busca${x.id === S.empId ? " · ativa" : ""}</span></button><button class="acao" type="button" data-emp-del="${x.id}">${S.confirmaDel === x.id ? "Confirmar exclusão" : "Excluir"}</button></div>`).join("") || '<div class="vazio">Nenhuma empresa ainda. Importe o Cartão CNPJ abaixo ou crie uma empresa em branco.</div>'}</div>
@@ -1207,7 +1366,7 @@ function viewEmpresa() {
     <label class="drop" for="arq"><input type="file" id="arq" accept=".pdf,.json,.txt,.csv,application/pdf,application/json,text/plain"><span>Escolher o arquivo da empresa</span><small>ou arraste para cá</small></label>
     <div class="form" style="grid-template-columns:1fr auto;align-items:end;margin-top:12px"><label>Ou consultar pelo CNPJ<input id="cnpj_busca" placeholder="00.000.000/0000-00" inputmode="numeric"></label><button class="btn2" type="button" data-buscar-cnpj>Consultar</button></div>
     ${S.msg ? `<div class="aviso info" role="status">${esc(S.msg)}</div>` : ""}</section>`;
-  if (!e) return lista + imp + cfgAnalista();
+  if (!e) return blocoLocais() + lista + imp + cfgAnalista();
   const f = (k, t, cls = "") => `<label class="${cls}">${t}<input id="e_${k}" data-emp="${e.id}" value="${esc(e[k] || "")}"></label>`;
   const dados = `<section class="painel"><h2>Dados da empresa</h2><div class="form">${f("razao","Razão social","l")}${f("fantasia","Nome fantasia")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
     ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div><p class="fonte" style="margin:10px 0 0">As alterações são salvas automaticamente neste navegador.</p></section>`;
@@ -1228,10 +1387,11 @@ function viewEmpresa() {
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <label style="display:grid;gap:3px;max-width:260px;font-size:12px;color:var(--muted)">Propostas encerrando nos próximos<select data-dias>${[15,30,45,60,90].map(d => `<option value="${d}" ${e.dias === d ? "selected" : ""}>${d} dias</option>`).join("")}</select></label>
     <div><button class="btn2 prim" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div></section>`;
-  return `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${onde}${ev}${cfgAnalista()}`;
+  return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${onde}${ev}${cfgAnalista()}`;
 }
 
 function render() {
+  renderConta();
   const m = metricas(); renderNav(m); $("#hdr-emp").innerHTML = hdrEmp();
   VIEWS.forEach(v => $("#v-" + v).hidden = v !== S.view);
   if (S.view === "inicio") { $("#v-inicio").innerHTML = viewInicio(m); const w = $(".cena-wrap"); if (w && !S.centrou) { w.scrollLeft = (w.scrollWidth - w.clientWidth) / 2; S.centrou = true; } }
@@ -1273,8 +1433,13 @@ function aoClicar(ev) {
   if (D.areaSel !== undefined) { S.areaSel = D.areaSel || null; render(); return; }
   if (D.empSel) { lerForm(); return escolherEmpresa(D.empSel); }
   if ("empNew" in D) { lerForm(); novaEmpresa(); S.msg = ""; mudouTermos(); return; }
-  if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
+  if (D.empDel) { if (S.confirmaDel !== D.empDel) { S.confirmaDel = D.empDel; return render(); } S.empresas = S.empresas.filter(x => x.id !== D.empDel); delete S.col[D.empDel]; if (S.user) _sync.apagar.add(D.empDel); S.confirmaDel = null; if (S.empId === D.empDel) S.empId = S.empresas[0]?.id || null; return mudouTermos(); }
   if ("buscarCnpj" in D) return buscarCnpj();
+  if ("entrar" in D) return entrar($("#lg-email").value.trim(), $("#lg-senha").value);
+  if ("sair" in D) return sair();
+  if ("modoLocal" in D) { S.modoLocal = true; S.auth = "local"; S.login = {msg:"", ocupado:false}; lerLocal(); return carregar().then(render); }
+  if ("entrarTela" in D) { S.auth = "login"; return render(); }
+  if ("importarLocais" in D) { importarLocais().then(n => { S.msg = n ? `${n} empresa${n > 1 ? "s enviadas" : " enviada"} para a sua conta.` : ""; render(); }); return; }
   if ("fzIniciar" in D) return iniciarFarejador();
   if (D.analisar) return analisarEdital(D.analisar);
   if ("kwBuscar" in D) return buscarPalavra($("#kw-q").value);
@@ -1331,6 +1496,7 @@ document.addEventListener("input", ev => {   // observações da licitação: sa
   _tObs = setTimeout(() => { salvar(); $("#obs-st") && ($("#obs-st").textContent = "Salvo neste navegador."); renderNav(metricas()); }, 500);
 });
 document.addEventListener("keydown", ev => {
+  if (ev.key === "Enter" && ev.target.id === "lg-senha") { ev.preventDefault(); entrar($("#lg-email").value.trim(), $("#lg-senha").value); return; }
   if (ev.key === "Enter" && ev.target.id === "kw-q") { ev.preventDefault(); buscarPalavra(ev.target.value); return; }
   if (ev.key === "Escape") { if (S.modal) { S.modal = null; render(); } else if (!$("#gaveta").hidden) fecharGaveta(); }
   if (ev.key === "Enter" && ev.target.dataset?.termoIn !== undefined) { ev.preventDefault(); addTermo(+ev.target.dataset.termoIn); return; }
@@ -1355,6 +1521,6 @@ document.addEventListener("drop", ev => { const z = ev.target.closest?.(".drop")
 $("#busca").addEventListener("input", ev => { S.q = ev.target.value; renderOport(); });
 window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
 
-(async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; recomporOps(); render(); await carregar(); render(); })();
+(async () => { const h = location.hash.slice(1); if (VIEWS.includes(h)) S.view = h; recomporOps(); render(); await iniciarConta(); recomporOps(); render(); await carregar(); render(); })();
 
 </script>
