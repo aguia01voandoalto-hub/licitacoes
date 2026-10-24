@@ -1249,6 +1249,12 @@ function declaracoes(o) {
     ["Declaração de elaboração independente de proposta", cab + "DECLARA que a proposta foi elaborada de forma independente, sem consulta, comunicação ou acordo com qualquer outro licitante, e que seu conteúdo não foi informado a terceiros antes da abertura da sessão." + fim],
     ["Declaração de reserva de cargos para pessoa com deficiência", cab + "DECLARA, para fins do art. 63, IV, da Lei nº 14.133/2021, que cumpre as exigências de reserva de cargos para pessoa com deficiência e para reabilitado da Previdência Social, previstas em lei." + fim]];
   if (/^(me|epp)$/i.test(e.porte || "")) l.push(["Declaração de enquadramento como ME/EPP", cab + `DECLARA, sob as penas da lei, que se enquadra como ${e.porte.toUpperCase()} nos termos da Lei Complementar nº 123/2006 e que não incorre em nenhuma das vedações do art. 3º, § 4º, da mesma lei.` + fim]);
+  const ja = l.map(x => norm(x[0]));
+  (S.analises[o.id]?.habilitacao || []).filter(h => /declar/i.test(h.exigencia)).forEach(h => {   // declarações que este edital pede, além das padrão
+    const t = "Declaração exigida no edital: " + corta(h.exigencia.replace(/^declara[çc][ãa]o\s*(de|do|da|que)?\s*/i, ""), 70);
+    if (ja.some(x => x.includes(norm(h.exigencia).slice(0, 25)))) return;
+    l.push([t, cab + `DECLARA, para os fins do edital${h.pagina ? " (p. " + h.pagina + ")" : ""}, o seguinte: ${h.exigencia}\n\n[Modelo a adaptar: confira no edital o texto exato que o órgão exige e ajuste esta declaração.]` + fim]);
+  });
   return l;
 }
 
@@ -1468,6 +1474,11 @@ function htmlPacote(id) {
     <p><b>Validade da proposta:</b> ${esc(pr.validade || "60")} dias, contados da data de abertura das propostas.</p>
     ${pr.prazo ? `<p><b>Prazo de entrega/execução:</b> ${esc(pr.prazo)}.</p>` : ""}${pr.pagamento ? `<p><b>Condições de pagamento:</b> ${esc(pr.pagamento)}.</p>` : ""}${pr.marca ? `<p><b>Marca/modelo e observações:</b> ${esc(pr.marca)}.</p>` : ""}${pr.banco ? `<p><b>Dados bancários:</b> ${esc(pr.banco)}.</p>` : ""}
     <p>Declaramos que nos preços propostos estão incluídos todos os custos e despesas, tais como tributos, encargos, fretes, seguros e quaisquer outros necessários ao cumprimento integral do objeto, e que concordamos com todas as condições do edital.</p>${ass}`;
+  const hab = S.analises[id] ? S.analises[id].habilitacao : DOCS_PADRAO.map(([t, g]) => ({grupo:g, exigencia:t}));
+  const cofre = docsAtivos(), stRot = {ok:"em dia", vence:"vence em até 30 dias", vencida:"vencida"};
+  h += `<div class="pb"><h3 style="text-align:center">DOCUMENTOS DE HABILITAÇÃO: CONFERÊNCIA COM O COFRE</h3><p>Exigências do edital e o documento da empresa que as atende. Anexe os arquivos listados antes de enviar.</p><table><thead><tr><th>Exigência</th><th>Grupo</th><th>Documento no cofre</th><th>Validade</th><th>Situação</th></tr></thead><tbody>` +
+    hab.map(x => { const ds = cofre.filter(d => d.grupo === x.grupo), d = ds.find(y => statusDoc(y) === "ok") || ds[0], st = d ? statusDoc(d) : null;
+      return `<tr><td>${esc(x.exigencia)}${x.pagina ? " (edital p. " + esc(x.pagina) + ")" : ""}</td><td>${esc(GRUPOS[x.grupo] || x.grupo)}</td><td>${d ? esc(d.nome) : "—"}</td><td>${d?.validade ? esc(dtDia(d.validade)) : "—"}</td><td>${d ? esc(stRot[st]) : "<b>FALTA DOCUMENTO</b>"}</td></tr>`; }).join("") + `</tbody></table></div>`;
   declaracoes(o).forEach(([t, txt]) => { h += `<div class="pb"><h3 style="text-align:center">${esc(t.toUpperCase())}</h3><p style="white-space:pre-wrap">${esc(txt.split("\n\n[Local]")[0])}</p>${ass}</div>`; });
   return h;
 }
