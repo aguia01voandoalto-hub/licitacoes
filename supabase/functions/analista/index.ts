@@ -4,7 +4,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { PDFDocument } from "npm:pdf-lib@1.17.1";
 import { strFromU8, unzipSync } from "npm:fflate@0.8.2";
 
-const MODELO = Deno.env.get("ANALISTA_MODELO") ?? "claude-sonnet-5-5";
+// Padrão: Haiku (mais barato). Para mais qualidade, defina o segredo ANALISTA_MODELO, por exemplo claude-sonnet-5-5.
+const MODELO = Deno.env.get("ANALISTA_MODELO") ?? "claude-haiku-5-5";
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_PAGINAS = 100;
 const MAX_CHARS = 350_000;
@@ -136,21 +137,26 @@ async function chamarClaude(conteudo: Conteudo, opp: Record<string, unknown>) {
   if (!chave) throw new Erro(503, "A chave da Anthropic não está configurada no servidor (ANTHROPIC_API_KEY).");
   const contexto = `Dados da licitação no PNCP: órgão ${opp.orgao ?? "?"} (${opp.municipio ?? ""}/${opp.uf ?? ""}); modalidade ${opp.modalidade ?? "?"}; valor estimado ${opp.valor_estimado ?? "sigiloso"}; propostas até ${opp.encerramento_proposta ?? "?"}; objeto resumido: ${opp.objeto ?? "?"}.` +
     (conteudo.paginasTotal && conteudo.paginasLidas! < conteudo.paginasTotal ? `\nATENÇÃO: o PDF tem ${conteudo.paginasTotal} páginas e você recebeu só as primeiras ${conteudo.paginasLidas}. Registre isso em lacunas.` : "");
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": chave, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      model: MODELO, max_tokens: 6000, system: SISTEMA,
-      tools: [{ name: "registrar_analise", description: "Registra a análise estruturada do edital.", input_schema: SCHEMA }],
-      tool_choice: { type: "tool", name: "registrar_analise" },
-      messages: [{ role: "user", content: [conteudo.bloco, { type: "text", text: contexto + "\n\nAnalise este edital." }] }],
-    }),
-  });
-  const corpo = await r.json();
-  if (!r.ok) throw new Erro(502, `A API da Anthropic recusou o pedido: ${corpo?.error?.message ?? r.status}`);
-  const uso = corpo.content?.find((c: { type: string }) => c.type === "tool_use");
-  if (!uso) throw new Erro(502, "O Claude não devolveu a análise estruturada.");
-  return uso.input as Record<string, unknown>;
+  // Os modelos novos não aceitam forçar a ferramenta (tool_choice "tool"): deixamos em automático e pedimos a chamada no texto.
+  const mensagens: Record<string, unknown>[] = [{ role: "user", content: [conteudo.bloco, { type: "text", text: contexto + "\n\nAnalise este edital e registre o resultado chamando a ferramenta registrar_analise." }] }];
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": chave, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: MODELO, max_tokens: 8000, system: SISTEMA,
+        tools: [{ name: "registrar_analise", description: "Registra a análise estruturada do edital.", input_schema: SCHEMA }],
+        messages: mensagens,
+      }),
+    });
+    const corpo = await r.json();
+    if (!r.ok) throw new Erro(502, `A API da Anthropic recusou o pedido: ${corpo?.error?.message ?? r.status}`);
+    const uso = corpo.content?.find((c: { type: string }) => c.type === "tool_use");
+    if (uso) return uso.input as Record<string, unknown>;
+    mensagens.push({ role: "assistant", content: corpo.content ?? [] });
+    mensagens.push({ role: "user", content: "Registre agora a análise completa chamando a ferramenta registrar_analise." });
+  }
+  throw new Erro(502, "O modelo não devolveu a análise estruturada. Tente de novo.");
 }
 
 const tokenOk = (recebido: string | null) => {
