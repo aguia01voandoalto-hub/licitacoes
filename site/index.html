@@ -816,7 +816,7 @@ let SB = null;
 const _sync = {t:0, rodando:false, busca:new Set(), apagar:new Set(), ult:{}, falhas:0};
 S.user = null; S.modoLocal = false; S.auth = "carregando"; S.nuvem = ""; S.login = {msg:"", ocupado:false};
 
-function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; return e; }
+function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; return e; }
 const dadosDe = e => { const {id, ...d} = e; return d; };
 const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}});
 const limparMemoria = () => { S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.docsLic = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
@@ -1460,7 +1460,7 @@ function aoClicar(ev) {
   if (D.termoAdd !== undefined) return addTermo(+D.termoAdd);
   if (D.termoDel) { const [i, j] = D.termoDel.split(":").map(Number); e.areas[i].termos.splice(+t.dataset.j, 1); return mudouTermos(); }
   if ("palavraAdd" in D) return addPalavra();
-  if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { e.palavras.splice(+D.palavraDel, 1); return mudouTermos(); }
+  if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { (e.palavras = e.palavras || []).splice(+D.palavraDel, 1); return mudouTermos(); }
   if ("evitarAdd" in D) return addEvitar();
   if (D.evitarDel !== undefined && t.hasAttribute("data-evitar-del")) { e.evitar.splice(+D.evitarDel, 1); return mudouTermos(); }
   if (D.copiar) { const txt = $("#"+D.copiar).textContent; (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => t.textContent = "Copiado", () => { const r = document.createRange(); r.selectNodeContents($("#"+D.copiar)); getSelection().removeAllRanges(); getSelection().addRange(r); t.textContent = "Selecionado: use Ctrl+C"; }); return; }
@@ -1472,6 +1472,7 @@ function addTermo(i) {
 }
 function addPalavra() {
   const e = emp(), v = ($("#nova_palavra")?.value || "").trim(); if (!e || !v) return;
+  e.palavras = e.palavras || [];
   v.split(/[,;]/).map(x => x.trim()).filter(x => x.length >= 2).forEach(x => { if (!e.palavras.some(y => norm(y) === norm(x))) e.palavras.push(x); });
   mudouTermos(); setTimeout(() => $("#nova_palavra")?.focus(), 30);
 }
