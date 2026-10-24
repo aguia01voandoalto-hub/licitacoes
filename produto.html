@@ -310,10 +310,6 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 
 <section class="view" id="v-oportunidades" hidden>
   <div id="empbar2"></div>
-  <section class="kwbox"><span class="eb-k">Buscar por palavra-chave no PNCP</span>
-    <div class="kw-row"><input type="search" id="kw-q" placeholder="Ex.: cadeira ergonômica, toner, notebook" aria-label="Palavra-chave"><button class="btn2 prim" type="button" data-kw-buscar>Buscar no PNCP</button></div>
-    <p class="fonte" style="margin:8px 0 0">Procura nos editais que estão recebendo proposta ou vão receber, nos estados da empresa (nenhum estado marcado: Brasil todo). Os resultados podem ir para o quadro da empresa.</p>
-    <div id="kw-res"></div></section>
   <h1 class="t">Oportunidades</h1>
   <p class="sub">O que o Farejador encontrou no PNCP dentro das atividades da empresa. Analise, decida e acompanhe cada licitação no quadro.</p>
   <p class="fonte" id="fonte">Carregando oportunidades…</p>
@@ -1295,7 +1291,7 @@ function renderKw() {
   const no = new Set(S.ops.map(o => o.id)), novos = k.itens.filter(o => !no.has(o.id)), lim = k.limite || 30, e = emp();
   const ja = e && e.areas.some(a => a.termos.some(t => norm(t) === norm(k.q)));
   el.innerHTML = `<div class="kw-h"><b>${k.itens.length} ${k.itens.length === 1 ? "licitação" : "licitações"} para “${esc(k.q)}”</b><span>${k.itens.length - novos.length ? (k.itens.length - novos.length) + " já no quadro · " : ""}${k.ignoradas ? k.ignoradas + " revogadas, anuladas ou suspensas ignoradas · " : ""}${k.truncado ? "mostrando as primeiras 150 por estado" : "status: recebendo ou a receber proposta"}</span>
-    <div class="acoes" style="margin:0"><button class="btn2 prim" type="button" data-kw-todas ${novos.length ? "" : "disabled"}>Adicionar todas ao quadro (${novos.length})</button>${ja ? "" : `<button class="btn2" type="button" data-kw-salvar>Salvar “${esc(k.q)}” como atividade da empresa</button>`}<button class="btn2" type="button" data-kw-limpar>Limpar</button></div></div>` +
+    <div class="acoes" style="margin:0"><button class="btn2 prim" type="button" data-kw-todas ${novos.length ? "" : "disabled"}>Adicionar todas ao quadro (${novos.length})</button>${ja ? "" : `<button class="btn2" type="button" data-kw-salvar>Salvar “${esc(k.q)}” como atividade da empresa</button>`}<button class="btn2" type="button" data-view="oportunidades">Ver o quadro</button><button class="btn2" type="button" data-kw-limpar>Limpar</button></div></div>` +
     (k.itens.length ? k.itens.slice(0, lim).map(o => { const d = diasPara(o.encerramento_proposta), dentro = no.has(o.id);
       return `<div class="kwr"><div class="kwr-t"><span class="org">${esc(o.uf)} · ${esc(o.orgao)}</span><div class="obj">${esc(o.objeto)}</div><div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade || "")}</span></div></div>
       <div class="kwr-a">${dentro ? '<span class="pill ok">no quadro</span>' : `<button class="acao" type="button" data-kw-add="${esc(o.id)}">Adicionar</button>`}<button class="acao prim" type="button" data-kw-abrir="${esc(o.id)}">Abrir</button></div></div>`; }).join("") +
@@ -1303,7 +1299,7 @@ function renderKw() {
 }
 
 function renderOport() {
-  $("#empbar2").innerHTML = empbar() + fzStrip(); renderKw();
+  $("#empbar2").innerHTML = empbar() + fzStrip();
   const U = universo();
   const r = S.res[S.empId];
   $("#fonte").innerHTML = esc(`${fonteTexto()} · ${U.filter(vigente).length} oportunidades`) + (S.demo ? ' <button class="lnk" type="button" data-demo-off>Sair da demonstração</button>' : "") +
@@ -1348,6 +1344,12 @@ function viewDocumentos() {
 
 const chipsTermos = (lista, attr) => lista.map((t,j) => `<span class="tchip">${esc(t)}<button type="button" aria-label="Remover ${esc(t)}" ${attr}="${j}">×</button></span>`).join("");
 
+function kwBox() {
+  return `<section class="painel kwbox"><h2>Buscar por palavra-chave no PNCP</h2>
+    <p class="fonte" style="margin:0">Procura nos editais que estão recebendo proposta ou vão receber, nos estados da empresa (nenhum estado marcado: Brasil todo). Os resultados podem ir para o quadro da empresa ou virar uma atividade de busca.</p>
+    <div class="kw-row"><input type="search" id="kw-q" placeholder="Ex.: cadeira ergonômica, toner, notebook" aria-label="Palavra-chave" value="${esc(S.kwTexto || "")}"><button class="btn2 prim" type="button" data-kw-buscar>Buscar no PNCP</button></div>
+    <div id="kw-res"></div></section>`;
+}
 function cfgAnalista() {
   return `<section class="painel"><h2>Configuração do Analista</h2><p class="fonte">O Analista lê o edital no servidor (Supabase), onde fica a chave da Anthropic. Aqui você informa o código de acesso que definiu lá (segredo ANALISTA_TOKEN). Ele fica só neste navegador.</p>
     <div class="form" style="grid-template-columns:1fr auto auto;align-items:end;max-width:700px"><label>Código de acesso<input id="tok_analista" type="password" autocomplete="off" value="${esc(lerToken())}"></label><button class="btn2" type="button" data-salvar-token>Salvar</button><button class="btn2 prim" type="button" data-testar-token>Testar conexão</button></div>
@@ -1387,7 +1389,7 @@ function viewEmpresa() {
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <label style="display:grid;gap:3px;max-width:260px;font-size:12px;color:var(--muted)">Propostas encerrando nos próximos<select data-dias>${[15,30,45,60,90].map(d => `<option value="${d}" ${e.dias === d ? "selected" : ""}>${d} dias</option>`).join("")}</select></label>
     <div><button class="btn2 prim" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div></section>`;
-  return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${onde}${ev}${cfgAnalista()}`;
+  return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${kwBox()}${onde}${ev}${cfgAnalista()}`;
 }
 
 function render() {
@@ -1398,7 +1400,7 @@ function render() {
   if (S.view === "oportunidades") renderOport();
   if (S.view === "propostas") $("#lista-propostas").innerHTML = viewPropostas();
   if (S.view === "documentos") $("#lista-docs").innerHTML = viewDocumentos();
-  if (S.view === "empresa") $("#lista-empresa").innerHTML = viewEmpresa();
+  if (S.view === "empresa") { $("#lista-empresa").innerHTML = viewEmpresa(); renderKw(); }
   renderModal();
 }
 function irPara(v) {
@@ -1488,6 +1490,7 @@ function addEvitar() {
   mudouTermos(); setTimeout(() => $("#novo_evitar")?.focus(), 30);
 }
 document.addEventListener("click", aoClicar);
+document.addEventListener("input", ev => { if (ev.target.id === "kw-q") S.kwTexto = ev.target.value; });
 let _tObs = 0;
 document.addEventListener("input", ev => {   // observações da licitação: salva sozinho
   const t = ev.target; if (!t.dataset || t.dataset.obs === undefined) return;
