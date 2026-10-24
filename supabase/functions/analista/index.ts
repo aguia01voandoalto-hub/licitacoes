@@ -50,10 +50,11 @@ Regras:
 - A recomendação é para uma pequena empresa fornecedora do tipo de objeto licitado. Seja prudente: prefira "participar_com_ressalvas" a "participar" quando houver risco relevante.
 - Escreva em português do Brasil, claro e direto.`;
 
-type Arquivo = { titulo?: string; tipoDocumentoNome?: string; url: string };
+type Arquivo = { titulo?: string; tipoDocumentoNome?: string; url: string; dataPublicacaoPncp?: string };
 
 function pontuar(a: Arquivo): number {
   const t = `${a.tipoDocumentoNome ?? ""} ${a.titulo ?? ""}`.toLowerCase();
+  if (/revoga|cancelamento|anula|ata de|resultado|homolog|adjudic|recurso|impugna|esclarecimento|comprovante/.test(t)) return 0;
   if (/edital/.test(t)) return 3;
   if (/aviso|termo de refer|dispensa|preg/.test(t)) return 2;
   return 1;
@@ -82,6 +83,44 @@ async function baixar(url: string): Promise<{ bytes: Uint8Array; nome: string }>
   const bytes = new Uint8Array(await r.arrayBuffer());
   if (bytes.length > MAX_BYTES) throw new Erro(413, "O arquivo do edital é grande demais para análise automática (acima de 25 MB).");
   return { bytes, nome: nomeDoDownload(r, url) };
+}
+
+const MIME: Record<string, string> = {
+  pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip",
+  odt: "application/vnd.oasis.opendocument.text", txt: "text/plain; charset=utf-8", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+};
+const limpar = (n: string) => n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(-90) || "arquivo";
+
+// Guarda uma cópia de cada arquivo da licitação no armazenamento (bucket público "editais") e devolve a lista para a tela.
+// É idempotente: se a licitação já foi guardada, devolve a lista que está no banco.
+// deno-lint-ignore no-explicit-any
+async function salvarDocumentos(db: any, id: string, arquivosApi: string): Promise<Record<string, unknown>[]> {
+  const { data: ex } = await db.from("documentos").select("itens").eq("id", id).maybeSingle();
+  if (ex?.itens?.length) return ex.itens;
+  const r = await fetch(arquivosApi, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Erro(502, `O PNCP não listou os arquivos (HTTP ${r.status}).`);
+  const arqs: Arquivo[] = (await r.json()).filter((a: Arquivo) => a.url);
+  if (!arqs.length) throw new Erro(404, "Esta licitação não tem arquivos no PNCP.");
+  const base = Deno.env.get("SUPABASE_URL")!, pasta = id.replace("/", "_");
+  const itens: Record<string, unknown>[] = []; let total = 0;
+  for (const [i, a] of arqs.slice(0, 15).entries()) {
+    try {
+      const b = await baixar(a.url);
+      total += b.bytes.length;
+      if (total > 90 * 1024 * 1024) { itens.push({ titulo: a.titulo ?? "arquivo", tipo: a.tipoDocumentoNome ?? "", erro: "Não guardado: limite de tamanho da licitação.", origem: a.url }); continue; }
+      const nome = b.nome.split("/").pop() || "arquivo", e = ext(nome);
+      const path = `${pasta}/${String(i + 1).padStart(2, "0")}-${limpar(nome)}`;
+      const up = await db.storage.from("editais").upload(path, b.bytes, { contentType: MIME[e] ?? "application/octet-stream", upsert: true });
+      if (up.error) throw new Error(up.error.message);
+      itens.push({ titulo: a.titulo ?? nome, tipo: a.tipoDocumentoNome ?? "", nome, ext: e, bytes: b.bytes.length,
+        url: `${base}/storage/v1/object/public/editais/${path.split("/").map(encodeURIComponent).join("/")}`, origem: a.url, publicado_em: a.dataPublicacaoPncp ?? null });
+    } catch (err) {
+      itens.push({ titulo: a.titulo ?? "arquivo", tipo: a.tipoDocumentoNome ?? "", erro: err instanceof Error ? err.message : String(err), origem: a.url });
+    }
+  }
+  if (itens.some((x) => x.url)) await db.from("documentos").upsert({ id, itens, atualizado_em: new Date().toISOString() }, { onConflict: "id" });
+  return itens;
 }
 
 class Erro extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -172,14 +211,15 @@ Deno.serve(async (req) => {
   try {
     if (!Deno.env.get("ANALISTA_TOKEN")) throw new Erro(503, "O código de acesso do Analista ainda não foi configurado no servidor (ANALISTA_TOKEN).");
     if (!tokenOk(req.headers.get("x-analista-token"))) throw new Erro(401, "Código de acesso do Analista incorreto.");
-    const { id, arquivos_api, opp = {}, forcar = false, dry = false } = await req.json();
+    const { id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = await req.json();
     if (!/^\d{14}-\d-\d{6}\/\d{4}$/.test(id ?? "")) throw new Erro(400, "Identificador da licitação inválido.");
     if (!/^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(arquivos_api ?? "")) throw new Erro(400, "Endereço dos arquivos inválido.");
 
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { db: { schema: "licitacoes" } });
+    if (acao === "documentos") return json({ documentos: await salvarDocumentos(db, id, arquivos_api) });
     if (!forcar && !dry) {
       const { data } = await db.from("analises").select("dados").eq("id", id).maybeSingle();
-      if (data) return json({ dados: data.dados, cache: true });
+      if (data) return json({ dados: data.dados, cache: true, documentos: await salvarDocumentos(db, id, arquivos_api).catch(() => []) });
     }
     const limite = Number(Deno.env.get("ANALISTA_LIMITE_DIA") ?? 40);
     const { count } = await db.from("analises").select("id", { count: "exact", head: true }).like("origem", "analista%").gte("gerada_em", new Date(Date.now() - 864e5).toISOString());
@@ -189,6 +229,7 @@ Deno.serve(async (req) => {
     const conteudo = await prepararConteudo(arq.bytes, arq.nome);
     if (dry) return json({ ok: true, arquivo: conteudo.arquivo, tipo: conteudo.tipo, bytes: conteudo.bytes, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas });
 
+    const documentos = await salvarDocumentos(db, id, arquivos_api).catch(() => []);
     const analise = await chamarClaude(conteudo, opp);
     const dados = { ...analise, id, edital: conteudo.arquivo, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas,
       gerado_por: `Analista (${MODELO}) leu ${conteudo.paginasLidas ? conteudo.paginasLidas + " páginas de " : ""}${conteudo.arquivo}.` };
@@ -199,7 +240,7 @@ Deno.serve(async (req) => {
     }, { onConflict: "id", ignoreDuplicates: true });
     const { error } = await db.from("analises").upsert({ id, dados, modelo: MODELO, origem: "analista-edge" }, { onConflict: "id" });
     if (error) throw new Erro(500, "A análise ficou pronta, mas não foi possível guardá-la: " + error.message);
-    return json({ dados, cache: false });
+    return json({ dados, cache: false, documentos });
   } catch (e) {
     if (e instanceof Erro) return json({ erro: e.message }, e.status);
     console.error(e);

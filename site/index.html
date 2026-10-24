@@ -243,6 +243,26 @@ section.painel{margin-top:14px}.emp-grid section.painel{margin-top:0}
 .mini-r b{color:var(--ink);font-weight:600}
 @media (max-width:900px){.empbar.mini{grid-template-columns:1fr}.eb-tg{position:static;justify-self:start;margin-bottom:4px}}
 
+/* detalhe da licitação em tela cheia */
+.gaveta{inset:0;width:100%;border-left:0;padding:calc(14px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));z-index:25}
+body.sem-rolagem{overflow:hidden}
+.det{max-width:1280px;margin:0 auto}
+.det-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.det-h{font:700 24px/1.2 var(--f-display);margin:8px 0 4px;text-wrap:balance;max-width:80ch}
+.det-grid{display:grid;grid-template-columns:minmax(300px,440px) minmax(0,1fr);gap:22px;align-items:start}
+.det-l,.det-r{display:grid;gap:4px;min-width:0}
+.det section h3{margin-top:16px}
+.obs{width:100%;font:14px/1.5 var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;min-height:120px}
+.doc{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.doc:first-of-type{border-top:0}
+.ext{font:700 11px var(--f-mono);background:var(--accent-soft);color:var(--accent-text);border-radius:6px;padding:8px 6px;min-width:42px;text-align:center}
+.doc-t{display:grid;gap:1px;min-width:0}
+.doc-t b{font-weight:600;font-size:13.5px;overflow-wrap:anywhere}
+.doc-t small{color:var(--muted);font-size:12px}
+.doc-a{display:flex;gap:6px}
+a.acao,a.btn2{text-decoration:none;display:inline-block}
+@media (max-width:960px){.det-grid{grid-template-columns:1fr}.doc{grid-template-columns:auto 1fr}.doc-a{grid-column:1/-1}}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -349,10 +369,10 @@ const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" :
 const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const novoId = () => "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-let S = {analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fz:{estado:"parado"}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
+let S = {docsLic:{}, obs:{}, analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fz:{estado:"parado"}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
 try {
   const j2 = JSON.parse(localStorage.getItem("tl_v2") || "null");
-  if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}});
+  if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}, obs:j2.obs||{}});
   else {
     const j1 = JSON.parse(localStorage.getItem("tl_v1") || "null");   // versão anterior: uma empresa só
     if (j1 && (j1.empresa?.razao || (j1.docs||[]).length)) {
@@ -365,11 +385,13 @@ const lerRes = id => { try { return JSON.parse(localStorage.getItem("tl_res_" + 
 const gravarRes = (id, r) => { try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
 S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
 try { S.compacta = localStorage.getItem("tl_ui_compacta") === "1"; } catch(e) {}
-const salvar = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col})); } catch(e){} };
+const salvar = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs})); } catch(e){} };
 
 const emp = () => S.empresas.find(e => e.id === S.empId) || null;
 const docsAtivos = () => emp()?.docs || [];
 const colDe = o => (S.col[S.empId] || {})[o.id] || "farejadas";
+const obsDe = id => (S.obs[S.empId] || {})[id] || "";
+const setObs = (id, t) => { const m = (S.obs[S.empId] = S.obs[S.empId] || {}); if (t.trim()) m[id] = t; else delete m[id]; };
 const setCol = (id, c) => { (S.col[S.empId] = S.col[S.empId] || {})[id] = c; };
 const diasPara = iso => iso ? Math.ceil((new Date(iso) - new Date()) / 864e5) : null;
 const rotuloPrazo = d => d == null ? "sem prazo" : d < 0 ? "encerrada" : d === 0 ? "encerra hoje" : d === 1 ? "encerra amanhã" : `encerra em ${d} dias`;
@@ -633,7 +655,7 @@ async function analisarEdital(id) {
     const r = await chamarAnalista({id, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
-    S.analises[id] = j.dados;
+    S.analises[id] = j.dados; if (j.documentos?.length) (S.docsLic[id] = S.docsLic[id] || {}).itens = j.documentos;
   } catch (err) {
     S.erroAnalise[id] = err.name === "AbortError" ? "A análise demorou demais. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão (no claude.ai essa chamada fica bloqueada)." : err.message;
   } finally { clearTimeout(t); delete S.analisando[id]; if (S.aberta === id) gaveta(id); render(); }
@@ -645,6 +667,33 @@ async function testarToken() {
     S.msgTok = r.status === 400 ? "Conectado: o código está certo e o Analista está pronto." : r.status === 401 ? "Código incorreto." : r.status === 503 ? (j.erro || "O servidor ainda não está configurado.") : (j.erro || "Resposta inesperada (HTTP " + r.status + ").");
   } catch (err) { S.msgTok = "Não consegui falar com o servidor do Analista. No claude.ai a chamada fica bloqueada; use o endereço publicado."; }
   render();
+}
+
+
+/* ---------- documentos da licitação ---------- */
+const tamanho = b => !b ? "" : b >= 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+async function carregarDocs(id, guardar) {
+  const o = S.ops.find(x => x.id === id); if (!o) return;
+  const d = (S.docsLic[id] = S.docsLic[id] || {});
+  if (d.carregando) return;
+  d.carregando = true; d.erro = null; if (S.aberta === id) atualizarDocs(id);
+  const listaPncp = async () => {   // plano B: lista direta do PNCP (o navegador pode baixar de lá)
+    const r = await fetch(o.arquivos_api, {headers:{Accept:"application/json"}}); if (!r.ok) throw new Error("O PNCP respondeu HTTP " + r.status);
+    return (await r.json()).filter(a => a.url).map(a => ({titulo:a.titulo, tipo:a.tipoDocumentoNome, origem:a.url, direto:true}));
+  };
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/documentos?select=itens&id=eq.${encodeURIComponent(id)}`, {headers:{apikey:SB_KEY, "Accept-Profile":"licitacoes"}});
+    const j = r.ok ? await r.json() : [];
+    if (j[0]?.itens?.length) d.itens = j[0].itens;
+    else if (guardar && lerToken()) {
+      const rr = await chamarAnalista({id, arquivos_api:o.arquivos_api, acao:"documentos"}), jj = await rr.json().catch(() => ({}));
+      if (!rr.ok) throw new Error(jj.erro || "O servidor respondeu HTTP " + rr.status);
+      d.itens = jj.documentos;
+    } else d.itens = await listaPncp();
+  } catch (err) {
+    try { d.itens = await listaPncp(); d.aviso = "Não consegui guardar uma cópia (" + (err.message || err) + "). Os links abaixo vêm direto do PNCP."; }
+    catch (e2) { d.erro = "Não consegui buscar os documentos. Abra o edital pelo PNCP."; }
+  } finally { d.carregando = false; if (S.aberta === id) atualizarDocs(id); }
 }
 
 /* ============ SALA DE CONTROLE (SVG isométrico) ============ */
@@ -794,7 +843,7 @@ function card(o) {
     <div class="org">${esc(o.uf)} · ${esc(o.orgao)}</div>
     <div class="obj">${esc(o.objeto)}</div>
     <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade||"")}</span></div>
-    <div class="meta"><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}</div>
+    <div class="meta"><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}${obsDe(o.id) ? '<span class="pill">com observações</span>' : ""}</div>
     <div class="acoes">${bt.map(([to,t,p]) => `<button type="button" class="acao ${p?"prim":""}" data-mover="${esc(o.id)}" data-to="${to}">${t}</button>`).join("")}</div></div>`;
 }
 
@@ -821,46 +870,63 @@ function declaracoes(o) {
   return l;
 }
 
-function gaveta(id) {
+const iconeDoc = e => ({pdf:"PDF", doc:"DOC", docx:"DOC", xls:"XLS", xlsx:"XLS", zip:"ZIP", odt:"DOC"}[e] || "ARQ");
+function htmlDocs(id) {
+  const d = S.docsLic[id] || {}, o = S.ops.find(x => x.id === id);
+  if (d.carregando && !d.itens) return '<div class="aviso info" role="status">Buscando e guardando os documentos da licitação…</div>';
+  if (d.erro && !d.itens) return `<div class="aviso">${esc(d.erro)}</div><div><button class="btn2" type="button" data-docs="${esc(id)}">Tentar de novo</button>${o && o.arquivos_api ? ` <a class="btn2" href="${esc(o.arquivos_api)}" target="_blank" rel="noopener">Ver no PNCP</a>` : ""}</div>`;
+  if (!d.itens) return `<div class="vazio" style="border:0;padding:6px 0">Os documentos ainda não foram carregados.</div><div><button class="btn2 prim" type="button" data-docs="${esc(id)}" data-guardar>Baixar os documentos da licitação</button></div>`;
+  const guardados = d.itens.some(x => x.url);
+  return (d.aviso ? `<div class="aviso">${esc(d.aviso)}</div>` : "") + (d.itens.length ? d.itens.map(x => `<div class="doc"><span class="ext">${iconeDoc(x.ext || (x.titulo || "").split(".").pop().toLowerCase())}</span>
+    <div class="doc-t"><b>${esc(x.titulo || x.nome || "Arquivo")}</b><small>${esc([x.tipo, tamanho(x.bytes), x.publicado_em ? "publicado em " + fmtData(x.publicado_em).slice(0, 10) : ""].filter(Boolean).join(" · "))}</small>${x.erro ? `<small class="falta">Não guardado: ${esc(x.erro)}</small>` : ""}</div>
+    <div class="doc-a">${x.url ? `<a class="acao prim" href="${esc(x.url)}" target="_blank" rel="noopener">Abrir</a><a class="acao" href="${esc(x.url)}?download=${encodeURIComponent(x.nome || "arquivo")}" rel="noopener">Baixar</a>` : `<a class="acao" href="${esc(x.origem)}" target="_blank" rel="noopener">Baixar do PNCP</a>`}</div></div>`).join("") : '<div class="vazio">Esta licitação não tem arquivos no PNCP.</div>') +
+    (!guardados && lerToken() ? `<div><button class="btn2 prim" type="button" data-docs="${esc(id)}" data-guardar>Guardar uma cópia no sistema</button></div>` : "");
+}
+function atualizarDocs(id) { const el = $("#det-docs"); if (el && S.aberta === id) el.innerHTML = htmlDocs(id); }
+
+function gaveta(id, manter) {
   const o = S.ops.find(x => x.id === id); if (!o) return;
   const a = S.analises[id], d = diasPara(o.encerramento_proposta), c = colDe(o), e = emp();
   const hab = a ? a.habilitacao : DOCS_PADRAO.map(([t,g]) => ({grupo:g, exigencia:t}));
-  let h = `<button class="btn2 fechar" type="button" data-fechar>Fechar</button>
-    <div class="org tag">${esc(o.uf)} · ${esc(o.municipio||"")}</div><h2>${esc(o.objeto)}</h2><div class="meta">${esc(o.orgao)}</div>
-    <h3>Oportunidade${e ? " para " + esc(e.razao || "a empresa") : ""}</h3><dl class="bloco kv">
+  const rolagem = manter ? $("#gaveta").scrollTop : 0;
+  let L = `<section><h3>Oportunidade${e ? " para " + esc(e.razao || "a empresa") : ""}</h3><dl class="bloco kv">
       <dt>Valor estimado</dt><dd>${esc(brl(o.valor_estimado))}${a && a.valor_estimado_edital ? " · no edital: " + esc(brl(a.valor_estimado_edital)) : ""}</dd>
       <dt>Modalidade</dt><dd>${esc(o.modalidade||"")}</dd>
       <dt>Propostas até</dt><dd>${o.encerramento_proposta ? new Date(o.encerramento_proposta).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short",timeZone:"America/Sao_Paulo"}) : "—"} (${rotuloPrazo(d)})</dd>
       <dt>Processo</dt><dd>${esc(o.processo||"—")}</dd>
       <dt>Interesses que casaram</dt><dd>${esc((o._hit||[]).join(", ") || "—")}</dd>
-      <dt>Edital</dt><dd>${o.arquivos_api ? `<a href="${esc(o.arquivos_api)}" target="_blank" rel="noopener">Arquivos no PNCP</a>` : ""}${o.link_origem ? ` · <a href="${esc(o.link_origem)}" target="_blank" rel="noopener">Sistema de origem</a>` : ""}</dd></dl>
-    <div class="acoes" style="margin-top:10px">${c!=="analise"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="analise" data-fechar>Mover para Em análise</button>`:""}${c!=="participar"?`<button class="acao prim" type="button" data-mover="${esc(id)}" data-to="participar" data-fechar>Participar</button>`:""}${c!=="descartadas"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="descartadas" data-fechar>Descartar</button>`:""}</div>`;
+      <dt>Origem</dt><dd>${o.link_origem ? `<a href="${esc(o.link_origem)}" target="_blank" rel="noopener">Sistema de origem</a>` : ""}${o.arquivos_api ? `${o.link_origem ? " · " : ""}<a href="${esc(o.arquivos_api.replace("/api/pncp/v1/orgaos/", "/app/editais/").replace(/\/compras\/(\d+)\/(\d+)\/arquivos$/, "/$1/$2"))}" target="_blank" rel="noopener">Ver no PNCP</a>` : ""}</dd></dl>
+    <div class="acoes" style="margin-top:10px">${c!=="analise"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="analise">Mover para Em análise</button>`:""}${c!=="participar"?`<button class="acao prim" type="button" data-mover="${esc(id)}" data-to="participar">Participar</button>`:""}${c!=="descartadas"?`<button class="acao" type="button" data-mover="${esc(id)}" data-to="descartadas">Descartar</button>`:""}</div></section>
+    <section><h3>Documentos da licitação</h3><div class="bloco" id="det-docs">${htmlDocs(id)}</div></section>
+    <section><h3>Observações</h3><div class="bloco"><textarea id="obs" class="obs" rows="6" placeholder="Anote o que descobrir: pendências, contatos, valores que pretende ofertar, decisões…" aria-label="Observações desta licitação" data-obs="${esc(id)}">${esc(obsDe(id))}</textarea><div class="fonte" id="obs-st" style="margin:0">Salvo automaticamente neste navegador, para ${esc(e ? e.razao || "a empresa" : "a empresa")}.</div></div></section>`;
 
-  h += `<h3>Analista</h3>`;
+  let R = `<section><h3>Analista</h3>`;
   if (a) {
     const rec = {participar:"Participar", participar_com_ressalvas:"Participar com ressalvas", nao_participar:"Não participar"}[a.recomendacao] || a.recomendacao;
-    h += `<div class="bloco"><div><span class="rec">${esc(rec)}.</span> ${esc(a.motivo_recomendacao||"")}</div>
+    R += `<div class="bloco"><div><span class="rec">${esc(rec)}.</span> ${esc(a.motivo_recomendacao||"")}</div>
       ${a.gerado_por ? `<div class="aviso">${esc(a.gerado_por)}</div>` : ""}
-      ${a.riscos?.length ? `<div><b>Riscos</b></div>` + a.riscos.map(r => `<div class="item"><span class="sev ${esc(r.gravidade)}">${esc(r.gravidade)}</span>${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
-      ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
-      ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">p. ${esc(r.pagina)} — “${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.riscos?.length ? `<div><b>Riscos</b></div>` + a.riscos.map(r => `<div class="item"><span class="sev ${esc(r.gravidade)}">${esc(r.gravidade)}</span>${esc(r.descricao)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
+      ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
       ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
       ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
   } else {
     const run = S.analisando[id], er = S.erroAnalise[id], tok = lerToken();
-    h += `<div class="bloco">${run ? '<div class="aviso info" role="status">O Analista está baixando e lendo o edital. Leva de 30 a 90 segundos…</div>' : "<div>Esta oportunidade ainda não foi analisada. O Analista baixa o edital no PNCP, lê e aponta prazos, exigências, riscos e multas, citando a página de cada trecho.</div>"}
+    R += `<div class="bloco">${run ? '<div class="aviso info" role="status">O Analista está baixando e lendo o edital. Leva de 30 a 90 segundos…</div>' : "<div>Esta oportunidade ainda não foi analisada. O Analista baixa o edital no PNCP, lê e aponta prazos, exigências, riscos e multas, citando a página de cada trecho.</div>"}
       ${er ? `<div class="aviso">${esc(er)}</div>` : ""}
       ${run ? "" : tok ? `<div><button class="btn2 prim" type="button" data-analisar="${esc(id)}">Analisar este edital</button></div>` : '<div class="aviso">Para usar o Analista, informe o código de acesso na tela Empresa (Configuração do Analista).</div><div><button class="btn2" type="button" data-view="empresa">Abrir a configuração do Analista</button></div>'}</div>`;
   }
-
-  h += `<h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
+  R += `</section><section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
     hab.map(x => { const [st, msg] = habilitacaoStatus(x.grupo); return `<div class="item"><span class="${st}">${st==="ok"?"✓":"!"}</span> <b>${esc(GRUPOS[x.grupo]||x.grupo)}:</b> ${esc(x.exigencia)}<span class="cit" style="display:block">${esc(msg)}${x.pagina ? " · edital p. " + esc(x.pagina) : ""}</span></div>`; }).join("") +
-    `<div><button class="btn2" type="button" data-view="documentos">Abrir o cofre de documentos</button></div></div>`;
+    `<div><button class="btn2" type="button" data-view="documentos">Abrir o cofre de documentos</button></div></div></section>
+    <section><h3>Redator · rascunhos</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
+    declaracoes(o).map((x,i) => `<details class="decl"><summary>${esc(x[0])}</summary><pre id="decl${i}">${esc(x[1])}</pre><div class="acoes"><button class="acao" type="button" data-copiar="decl${i}">Copiar texto</button></div></details>`).join("") + `</div></section>`;
 
-  h += `<h3>Redator · rascunhos</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
-    declaracoes(o).map((x,i) => `<details class="decl"><summary>${esc(x[0])}</summary><pre id="decl${i}">${esc(x[1])}</pre><div class="acoes"><button class="acao" type="button" data-copiar="decl${i}">Copiar texto</button></div></details>`).join("") + `</div>`;
-
-  $("#gaveta").innerHTML = h; $("#veu").hidden = false; $("#gaveta").hidden = false; $("#gaveta").scrollTop = 0; $("#gaveta").focus();
+  $("#gaveta").innerHTML = `<div class="det"><div class="det-top"><button class="btn2" type="button" data-fechar>← Voltar</button><span class="tag">${esc(o.uf)} · ${esc(o.municipio||"")}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${S.analises[id] ? '<span class="pill ok">analisada</span>' : ""}</div>
+    <h2 class="det-h">${esc(o.objeto)}</h2><div class="meta" style="margin-bottom:6px">${esc(o.orgao)}</div>
+    <div class="det-grid"><div class="det-l">${L}</div><div class="det-r">${R}</div></div></div>`;
+  $("#veu").hidden = true; $("#gaveta").hidden = false; document.body.classList.add("sem-rolagem");
+  $("#gaveta").scrollTop = rolagem; if (!manter) $("#gaveta").focus();
 }
 
 
@@ -1079,7 +1145,8 @@ function irPara(v) {
   S.view = v; try { history.replaceState(null, "", "#" + v); } catch(e){}
   fecharGaveta(); render(); window.scrollTo(0, 0);
 }
-const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; S.aberta = null; };
+const fecharGaveta = () => { $("#veu").hidden = true; $("#gaveta").hidden = true; S.aberta = null; document.body.classList.remove("sem-rolagem"); };
+const abrirDetalhe = (id, guardar) => { S.aberta = id; gaveta(id); carregarDocs(id, guardar); };
 const mudouTermos = () => { _memo.k = ""; salvar(); render(); };
 const escolherEmpresa = id => { S.empId = id; S.areaSel = null; S.uf = ""; S.demo = false; recomporOps(); salvar(); render(); };
 
@@ -1091,9 +1158,10 @@ function lerForm() {   // só lê o formulário se ele está visível e é da em
 function aoClicar(ev) {
   const t = ev.target.closest("button,[data-abrir],[data-ir],a,summary"); if (!t) return;
   const D = t.dataset, e = emp();
-  if (D.mover) { ev.stopPropagation(); setCol(D.mover, D.to); salvar(); if ("fechar" in D) fecharGaveta(); render(); return; }
-  if (D.abrirBotao) { S.aberta = D.abrirBotao; gaveta(D.abrirBotao); return; }
-  if (D.abrir && t.tagName !== "BUTTON") { S.aberta = D.abrir; gaveta(D.abrir); return; }
+  if (D.mover) { ev.stopPropagation(); const veioDoCard = !t.closest("#gaveta"); setCol(D.mover, D.to); salvar(); render(); if (D.to === "analise" && veioDoCard) abrirDetalhe(D.mover, true); else if (S.aberta === D.mover) gaveta(D.mover, true); return; }
+  if (D.docs) return carregarDocs(D.docs, "guardar" in D);
+  if (D.abrirBotao) return abrirDetalhe(D.abrirBotao, false);
+  if (D.abrir && t.tagName !== "BUTTON") return abrirDetalhe(D.abrir, false);
   if ("empbarToggle" in D) { S.compacta = !S.compacta; try { localStorage.setItem("tl_ui_compacta", S.compacta ? "1" : "0"); } catch(err) {} return render(); }
   if (D.ir) return irPara(D.ir);
   if (D.view) { lerForm(); salvar(); return irPara(D.view); }
@@ -1146,6 +1214,13 @@ function addEvitar() {
   mudouTermos(); setTimeout(() => $("#novo_evitar")?.focus(), 30);
 }
 document.addEventListener("click", aoClicar);
+let _tObs = 0;
+document.addEventListener("input", ev => {   // observações da licitação: salva sozinho
+  const t = ev.target; if (!t.dataset || t.dataset.obs === undefined) return;
+  setObs(t.dataset.obs, t.value); clearTimeout(_tObs);
+  $("#obs-st") && ($("#obs-st").textContent = "Salvando…");
+  _tObs = setTimeout(() => { salvar(); $("#obs-st") && ($("#obs-st").textContent = "Salvo neste navegador."); renderNav(metricas()); }, 500);
+});
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape") { if (S.modal) { S.modal = null; render(); } else if (!$("#gaveta").hidden) fecharGaveta(); }
   if (ev.key === "Enter" && ev.target.dataset?.termoIn !== undefined) { ev.preventDefault(); addTermo(+ev.target.dataset.termoIn); return; }
