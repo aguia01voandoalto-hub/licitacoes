@@ -303,6 +303,12 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 .res-c h4{font:700 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);margin:8px 0 2px}
 .res-a{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
 
+.painel.pos{border-left:4px solid var(--ok)}
+.painel.neg{border-left:4px solid var(--bad)}
+.painel h2 small{font:500 11px var(--f-mono);letter-spacing:0;text-transform:none;color:var(--muted);margin-left:6px}
+.tchip.neg{border-color:var(--bad);color:var(--bad)}
+.tchip button[title^="Mover"]{color:var(--accent-text);font-size:13px}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -1383,9 +1389,9 @@ const chipsTermos = (lista, attr) => lista.map((t,j) => `<span class="tchip">${e
 
 function palavrasBox(e) {
   const por = S.res[e.id]?.porPalavra || {};
-  return `<section class="painel"><h2>Palavras-chave</h2><p class="fonte">Cadastre as palavras que a empresa quer acompanhar. Quando o Farejador roda, ele procura cada uma no PNCP (a mesma busca do portal, que também olha os itens da licitação), nos estados da empresa, só em licitações recebendo ou a receber proposta. Prefira expressões específicas, como “cadeira ergonômica”.</p>
-    <div class="chips">${(e.palavras || []).map((k, j) => `<span class="tchip">${esc(k)}${por[k] != null ? ` <small title="encontradas na última busca">${por[k]}</small>` : ""}<button type="button" aria-label="Remover ${esc(k)}" data-palavra-del="${j}">×</button></span>`).join("") || '<span class="fonte" style="margin:0">Nenhuma palavra-chave cadastrada.</span>'}</div>
-    <div class="add"><input id="nova_palavra" placeholder="Ex.: cadeira ergonômica, toner original" aria-label="Nova palavra-chave"><button class="btn2 prim" type="button" data-palavra-add>Adicionar</button></div>
+  return `<section class="painel pos"><h2>Palavras-chave <small>(o que o Farejador procura)</small></h2><p class="fonte">Cadastre as palavras que a empresa quer <b>encontrar</b>. Quando o Farejador roda, ele procura cada uma no PNCP (a mesma busca do portal, que também olha os itens da licitação), nos estados da empresa, só em licitações recebendo ou a receber proposta. Prefira expressões específicas, como “cadeira ergonômica”.</p>
+    <div class="chips">${(e.palavras || []).map((k, j) => `<span class="tchip">${esc(k)}${por[k] != null ? ` <small title="encontradas na última busca">${por[k]}</small>` : ""}<button type="button" title="Mover para Palavras a evitar" aria-label="Mover ${esc(k)} para Palavras a evitar" data-palavra-mover="${j}">⇩</button><button type="button" aria-label="Remover ${esc(k)}" data-palavra-del="${j}">×</button></span>`).join("") || '<span class="fonte" style="margin:0">Nenhuma palavra-chave cadastrada.</span>'}</div>
+    <div class="add"><input id="nova_palavra" placeholder="Ex.: cadeira ergonômica, toner original" aria-label="Nova palavra-chave"><button class="btn2 prim" type="button" data-palavra-add>Adicionar às palavras-chave</button></div>
     ${(e.palavras || []).length ? '<div><button class="btn2" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div>' : ""}</section>`;
 }
 function cfgAnalista() {
@@ -1420,8 +1426,9 @@ function viewEmpresa() {
       <div class="chips">${chipsTermos(a.termos, "data-termo-del=\"" + i + ":\" data-j")}</div>
       <div class="add"><input id="termo_${i}" data-termo-in="${i}" placeholder="Adicionar palavra ou expressão" aria-label="Nova palavra"><button class="btn2" type="button" data-termo-add="${i}">Adicionar</button></div></div>`).join("") || '<div class="vazio">Nenhuma área de busca. Use as sugestões pelos CNAEs ou adicione uma área abaixo.</div>'}
     <div class="form" style="grid-template-columns:1fr auto auto;align-items:end;margin-top:12px"><label>Adicionar área do catálogo<select id="nova_area">${livres.map(([id, a]) => `<option value="${id}">${esc(a.nome)}</option>`).join("")}</select></label><button class="btn2 prim" type="button" data-area-add ${livres.length ? "" : "disabled"}>Adicionar</button><button class="btn2" type="button" data-area-livre>Criar área própria</button></div></section>`;
-  const ev = `<section class="painel"><h2>Palavras a evitar</h2><p class="fonte">Licitações com estas palavras no objeto são escondidas, mesmo que casem com uma área.</p>
-    <div class="chips">${chipsTermos(e.evitar, "data-evitar-del")}</div><div class="add"><input id="novo_evitar" placeholder="Ex.: hospitalar" aria-label="Palavra a evitar"><button class="btn2" type="button" data-evitar-add>Adicionar</button></div></section>`;
+  const ev = `<section class="painel neg"><h2>Palavras a evitar <small>(escondem licitações)</small></h2><p class="fonte"><b>Atenção:</b> aqui entram só as palavras que a empresa <b>não quer ver</b>. Qualquer licitação com uma delas no objeto é escondida, mesmo que case com uma atividade ou palavra-chave. O que a empresa quer <b>encontrar</b> vai em <b>Palavras-chave</b>, acima.</p>
+    <div class="chips">${(e.evitar || []).map((k, j) => `<span class="tchip neg">${esc(k)}<button type="button" title="Mover para Palavras-chave" aria-label="Mover ${esc(k)} para Palavras-chave" data-evitar-mover="${j}">⇧</button><button type="button" aria-label="Remover ${esc(k)}" data-evitar-del="${j}">×</button></span>`).join("") || '<span class="fonte" style="margin:0">Nenhuma palavra a evitar.</span>'}</div>
+    <div class="add"><input id="novo_evitar" placeholder="Ex.: hospitalar (esconde as licitações com esta palavra)" aria-label="Palavra a evitar"><button class="btn2" type="button" data-evitar-add>Adicionar às que evito</button></div></section>`;
   const onde = `<section class="painel"><h2>Onde o Farejador busca</h2><p class="fonte">Estados e modalidades que ele percorre no PNCP para esta empresa.</p>
     <div class="chips">${UFS.map(u => `<button class="chip" type="button" aria-pressed="${e.ufs.includes(u)}" data-uf-emp="${u}">${u}</button>`).join("")}</div>
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
@@ -1507,6 +1514,8 @@ function aoClicar(ev) {
   if (D.termoAdd !== undefined) return addTermo(+D.termoAdd);
   if (D.termoDel) { const [i, j] = D.termoDel.split(":").map(Number); e.areas[i].termos.splice(+t.dataset.j, 1); return mudouTermos(); }
   if ("palavraAdd" in D) return addPalavra();
+  if (D.palavraMover !== undefined) { e.palavras = e.palavras || []; e.evitar = e.evitar || []; const [k] = e.palavras.splice(+D.palavraMover, 1); if (k && !e.evitar.some(y => norm(y) === norm(k))) e.evitar.push(k); return mudouTermos(); }
+  if (D.evitarMover !== undefined) { e.palavras = e.palavras || []; e.evitar = e.evitar || []; const [k] = e.evitar.splice(+D.evitarMover, 1); if (k && !e.palavras.some(y => norm(y) === norm(k))) e.palavras.push(k); return mudouTermos(); }
   if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { (e.palavras = e.palavras || []).splice(+D.palavraDel, 1); return mudouTermos(); }
   if ("evitarAdd" in D) return addEvitar();
   if (D.evitarDel !== undefined && t.hasAttribute("data-evitar-del")) { e.evitar.splice(+D.evitarDel, 1); return mudouTermos(); }
