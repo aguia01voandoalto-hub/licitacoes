@@ -431,7 +431,7 @@ const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" :
 const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const novoId = () => "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-let S = {fase:"", porEmp:{}, obs:{}, ops:[], base:[], res:{}, fzs:{}, modal:null, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
+let S = {fase:"", porEmp:{}, obs:{}, dec:{}, ops:[], base:[], res:{}, fzs:{}, modal:null, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
 try {
   const j2 = JSON.parse(localStorage.getItem("tl_v2") || "null");
   if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}, obs:j2.obs||{}});
@@ -447,12 +447,15 @@ const lerRes = id => { try { return JSON.parse(localStorage.getItem("tl_res_" + 
 const gravarRes = (id, r) => { if (S.user) { _sync.busca.add(id); agendarSync(); return true; } try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
 S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
 try { S.compacta = localStorage.getItem("tl_ui_compacta") === "1"; } catch(e) {}
-const salvarLocal = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs})); } catch(e){} };
+const salvarLocal = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs, dec:S.dec})); } catch(e){} };
 const salvar = () => { if (S.user) { try { localStorage.setItem("tl_empresa_" + S.user.id, S.empId || ""); } catch(e) {} agendarSync(); } else salvarLocal(); };
 
 const emp = () => S.empresas.find(e => e.id === S.empId) || null;
 const docsAtivos = () => emp()?.docs || [];
 const colDe = o => (S.col[S.empId] || {})[o.id] || "farejadas";
+// Decisão do responsável: quando o e-mail foi enviado e o que ele respondeu (por empresa e licitação).
+const decDe = id => (S.dec[S.empId] || {})[id] || null;
+const setDec = (id, patch) => { const m = (S.dec[S.empId] = S.dec[S.empId] || {}); if (patch) m[id] = {...(m[id] || {}), ...patch}; else delete m[id]; };
 const obsDe = id => (S.obs[S.empId] || {})[id] || "";
 const setObs = (id, t) => { const m = (S.obs[S.empId] = S.obs[S.empId] || {}); if (t.trim()) m[id] = t; else delete m[id]; };
 const setCol = (id, c) => { (S.col[S.empId] = S.col[S.empId] || {})[id] = c; };
@@ -904,8 +907,8 @@ S.user = null; S.modoLocal = false; S.auth = "carregando"; S.nuvem = ""; S.login
 
 function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; return e; }
 const dadosDe = e => { const {id, ...d} = e; return d; };
-const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}});
-const limparMemoria = () => { Object.values(S.fzs).forEach(f => { f.parar = true; }); S.fzs = {}; S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.porEmp = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
+const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}, dec:S.dec[id] || {}});
+const limparMemoria = () => { Object.values(S.fzs).forEach(f => { f.parar = true; }); S.fzs = {}; S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.dec = {}; S.res = {}; S.ops = []; S.porEmp = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
 
 function msgAuth(err) {
   const m = String(err && err.message || err);
@@ -949,7 +952,7 @@ async function carregarNuvem() {
   if (error) throw error;
   limparMemoria();
   S.empresas = data.map(r => normEmpresa({...r.dados, id:r.id}));
-  for (const r of data) { S.col[r.id] = r.estado?.col || {}; S.obs[r.id] = r.estado?.obs || {}; S.res[r.id] = r.busca || null; _sync.ult[r.id] = JSON.stringify([dadosDe(S.empresas.find(e => e.id === r.id)), estadoDe(r.id)]); }
+  for (const r of data) { S.col[r.id] = r.estado?.col || {}; S.obs[r.id] = r.estado?.obs || {}; S.dec[r.id] = r.estado?.dec || {}; S.res[r.id] = r.busca || null; _sync.ult[r.id] = JSON.stringify([dadosDe(S.empresas.find(e => e.id === r.id)), estadoDe(r.id)]); }
   try { const salvo = localStorage.getItem("tl_empresa_" + S.user.id); if (salvo && S.empresas.some(e => e.id === salvo)) S.empId = salvo; } catch(e) {}
   S.empId = S.empId || S.empresas[0]?.id || null;
   S.nuvem = "ok"; recomporOps();
@@ -972,7 +975,7 @@ async function importarLocais() {
 }
 function lerLocal() {   // modo sem conta: volta a ler o que está neste navegador
   limparMemoria();
-  try { const j = JSON.parse(localStorage.getItem("tl_v2") || "null"); if (j) { S.empresas = (j.empresas || []).map(normEmpresa); S.empId = j.empId || null; S.col = j.col || {}; S.obs = j.obs || {}; } } catch(e) {}
+  try { const j = JSON.parse(localStorage.getItem("tl_v2") || "null"); if (j) { S.empresas = (j.empresas || []).map(normEmpresa); S.empId = j.empId || null; S.col = j.col || {}; S.obs = j.obs || {}; S.dec = j.dec || {}; } } catch(e) {}
   S.empresas.forEach(e => { S.res[e.id] = lerRes(e.id); });
   S.empId = S.empresas.some(e => e.id === S.empId) ? S.empId : (S.empresas[0]?.id || null); recomporOps();
 }
@@ -1166,7 +1169,7 @@ function card(o) {
     <div class="org">${esc(o.uf)} · ${esc(o.orgao)}</div>
     <div class="obj">${esc(o.objeto)}</div>
     <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade||"")}</span></div>
-    <div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${o.nova ? '<span class="pill ok">NOVA</span>' : (colDe(o) === "farejadas" && o.visto_em ? `<span class="pill" title="Já apareceu em busca anterior">vista em ${esc(fmtData(o.visto_em).slice(0, 5))}</span>` : "")}${o.fora_da_busca ? '<span class="pill warn" title="Não apareceu na última busca (pode ter encerrado), mas você já trabalhou nela">fora da última busca</span>' : ""}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}${obsDe(o.id) ? '<span class="pill">com observações</span>' : ""}</div>
+    <div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${o.nova ? '<span class="pill ok">NOVA</span>' : (colDe(o) === "farejadas" && o.visto_em ? `<span class="pill" title="Já apareceu em busca anterior">vista em ${esc(fmtData(o.visto_em).slice(0, 5))}</span>` : "")}${o.fora_da_busca ? '<span class="pill warn" title="Não apareceu na última busca (pode ter encerrado), mas você já trabalhou nela">fora da última busca</span>' : ""}${decDe(o.id)?.enviado_em && !decDe(o.id)?.resposta ? '<span class="pill warn" title="E-mail enviado ao responsável; aguardando a resposta">aguardando decisão</span>' : ""}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}${obsDe(o.id) ? '<span class="pill">com observações</span>' : ""}</div>
     <div class="acoes">${bt.map(([to,t,p]) => `<button type="button" class="acao ${p?"prim":""}" data-mover="${esc(o.id)}" data-to="${to}">${t}</button>`).join("")}</div></div>`;
 }
 
@@ -1323,6 +1326,13 @@ async function prepararEmail(id) {
   catch (err) { M.emails[id] = {erro:(err instanceof TypeError ? "Não consegui falar com o PNCP. Confira a conexão." : err.message)}; }
   if (S.empId === emp0 && S.aberta === id) gaveta(id, true);
 }
+function blocoDecisao(id, m) {
+  const d = decDe(id), q = d?.enviado_em ? new Date(d.enviado_em) : null, dias = q ? Math.floor((Date.now() - q) / 864e5) : 0;
+  if (d?.resposta) return `<div class="aviso ${d.resposta === "sim" ? "info" : ""}" role="status"><b>${d.resposta === "sim" ? "Responsável decidiu PARTICIPAR" : "Responsável decidiu NÃO participar"}</b> em ${esc(dtDia(d.respondido_em))}.${d.nota ? " " + esc(d.nota) : ""} <button class="lnk" type="button" data-dec-desfazer="${esc(id)}">desfazer</button></div>`;
+  if (q) return `<div class="aviso info" role="status"><b>Aguardando decisão</b> desde ${esc(dtDia(q))}${dias > 0 ? " (há " + dias + " dia" + (dias > 1 ? "s" : "") + ")" : ""}${d.para ? " · enviado para " + esc(d.para) : ""}.</div>
+    <div class="acoes"><button class="btn2 prim" type="button" data-dec-resp="sim:${esc(id)}">Responderam SIM: participar</button><button class="btn2" type="button" data-dec-resp="nao:${esc(id)}">Responderam NÃO: descartar</button><button class="lnk" type="button" data-dec-desfazer="${esc(id)}">desfazer envio</button></div>`;
+  return `<div class="acoes"><button class="btn2" type="button" data-dec-enviado="${esc(id)}">Marcar como enviado</button></div><div class="fonte" style="margin:0">Ao marcar, a oportunidade vai para “Em análise” e fica registrado que estamos aguardando a decisão.</div>`;
+}
 function blocoEmail(id) {
   const m = (mapasDe(S.empId).emails || {})[id], e = emp();
   if (!m) return `<section><h3>E-mail para o responsável decidir</h3><div class="bloco"><div>O Analista monta o e-mail com o que o responsável precisa para dizer sim ou não: objeto, itens com quantidade e valores, local, prazos, documentos, riscos e a data limite da resposta.</div>${e && !e.resp_email ? '<div class="aviso">Cadastre o e-mail do responsável pela decisão na tela Empresa (Dados da empresa). Sem ele, você preenche o destinatário aqui.</div>' : ""}<div><button class="btn2 prim" type="button" data-email-gerar="${esc(id)}">Preparar e-mail</button></div></div></section>`;
@@ -1332,6 +1342,7 @@ function blocoEmail(id) {
     <label class="fonte" style="margin:0">Para<input class="em-in" data-email-campo="para" data-email-id="${esc(id)}" value="${esc(m.para)}" placeholder="email@empresa.com" inputmode="email"></label>
     <label class="fonte" style="margin:0">Assunto<input class="em-in" data-email-campo="assunto" data-email-id="${esc(id)}" value="${esc(m.assunto)}"></label>
     <textarea class="obs" rows="18" data-email-campo="corpo" data-email-id="${esc(id)}" aria-label="Texto do e-mail" style="font-family:ui-monospace,monospace;font-size:12px">${esc(m.corpo)}</textarea>
+    ${blocoDecisao(id, m)}
     <div class="acoes"><button class="btn2 prim" type="button" data-email-abrir="${esc(id)}">Abrir no meu e-mail</button><button class="btn2" type="button" data-email-copiar="${esc(id)}">Copiar tudo</button><button class="btn2" type="button" data-email-gerar="${esc(id)}">Refazer</button></div>
     <div class="fonte" id="em-st">Você pode editar o texto antes de enviar. Ele não é enviado sozinho: abre no seu programa de e-mail ou você copia e cola.</div></div></section>`;
 }
@@ -1673,6 +1684,9 @@ function aoClicar(ev) {
   if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { (e.palavras = e.palavras || []).splice(+D.palavraDel, 1); return mudouTermos(); }
   if ("evitarAdd" in D) return addEvitar();
   if (D.evitarDel !== undefined && t.hasAttribute("data-evitar-del")) { e.evitar.splice(+D.evitarDel, 1); return mudouTermos(); }
+  if (D.decEnviado) { const id = D.decEnviado, m = (mapasDe(S.empId).emails || {})[id]; setDec(id, {enviado_em:new Date().toISOString(), para:m?.para || "", resposta:null}); if (colDe({id}) === "farejadas") setCol(id, "analise"); salvar(); render(); gaveta(id, true); return; }
+  if (D.decResp) { const [r, ...resto] = D.decResp.split(":"), id = resto.join(":"); setDec(id, {resposta:r, respondido_em:new Date().toISOString()}); setCol(id, r === "sim" ? "participar" : "descartadas"); salvar(); render(); gaveta(id, true); return; }
+  if (D.decDesfazer) { const id = D.decDesfazer; setDec(id, null); salvar(); render(); gaveta(id, true); return; }
   if (D.emailGerar) { prepararEmail(D.emailGerar); return; }
   if (D.emailCopiar || D.emailAbrir) {
     const id = D.emailCopiar || D.emailAbrir, m = (mapasDe(S.empId).emails || {})[id]; if (!m || !m.corpo) return;
