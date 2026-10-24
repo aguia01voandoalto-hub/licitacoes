@@ -319,6 +319,16 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 .tchip.neg{border-color:var(--bad);color:var(--bad)}
 .tchip button[title^="Mover"]{color:var(--accent-text);font-size:13px}
 
+/* proposta de preços */
+table.prop{width:100%;border-collapse:collapse;font-size:13px}
+table.prop th{text-align:left;font:800 12px var(--f-display);color:var(--navy);background:var(--surface2);padding:6px 8px;border-bottom:1px solid var(--line)}
+table.prop td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.prop td small{display:block;color:var(--muted);font-size:11.5px}
+table.prop td.tot{text-align:right;white-space:nowrap;font-weight:700}
+table.prop input{width:110px;text-align:right}
+.valg{font:700 15px var(--f-display);color:var(--navy);padding-top:4px}
+.em-in{width:100%;font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;margin-top:3px}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -1231,7 +1241,7 @@ function declaracoes(o) {
   const e = emp() || {}, nome = e.razao || "[RAZÃO SOCIAL]", cnpj = e.cnpj || "[CNPJ]", rep = e.rep || "[REPRESENTANTE LEGAL]", cpf = e.cpf || "[CPF]";
   const lic = `${o.modalidade || "Licitação"} nº ${o.numero_compra || "[Nº]"}/${o.ano || "[ANO]"} — ${o.orgao}`;
   const cab = `${lic}\n\nA empresa ${nome}, inscrita no CNPJ ${cnpj}${e.end ? ", com sede em " + e.end : ""}, por intermédio de seu representante legal, ${rep}, CPF ${cpf}, `;
-  const fim = `\n\n[Local], [data].\n\n______________________________\n${rep}\n${e.cargo || "[Cargo]"}`;
+  const fim = `\n\n[Local], [data].\n\n______________________________\n${rep}\n${e.cargo || "[Cargo]"}`.replace("[Local]", cidadeDe(e) || "[Local]").replace("[data]", hojeExt());
   const l = [
     ["Declaração de cumprimento dos requisitos de habilitação", cab + "DECLARA, sob as penas da lei, que cumpre plenamente os requisitos de habilitação exigidos no edital e que os documentos apresentados são verdadeiros (Lei nº 14.133/2021, art. 63, I)." + fim],
     ["Declaração de inexistência de fato impeditivo", cab + "DECLARA, sob as penas da lei, que não existe fato impeditivo para participar desta licitação e que não está impedida de licitar ou contratar com a Administração Pública, comprometendo-se a comunicar qualquer ocorrência superveniente." + fim],
@@ -1293,7 +1303,7 @@ function gaveta(id, manter) {
   R += `</section>${blocoEmail(id)}<section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
     hab.map(x => { const [st, msg] = habilitacaoStatus(x.grupo); return `<div class="item"><span class="${st}">${st==="ok"?"✓":"!"}</span> <b>${esc(GRUPOS[x.grupo]||x.grupo)}:</b> ${esc(x.exigencia)}<span class="cit" style="display:block">${esc(msg)}${x.pagina ? " · edital p. " + esc(x.pagina) : ""}</span></div>`; }).join("") +
     `<div><button class="btn2" type="button" data-view="documentos">Abrir o cofre de documentos</button></div></div></section>
-    <section><h3>Redator · rascunhos</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
+    ${blocoProposta(id)}<section><h3>Redator · declarações</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
     declaracoes(o).map((x,i) => `<details class="decl"><summary>${esc(x[0])}</summary><pre id="decl${i}">${esc(x[1])}</pre><div class="acoes"><button class="acao" type="button" data-copiar="decl${i}">Copiar texto</button></div></details>`).join("") + `</div></section>`;
 
   $("#gaveta").innerHTML = `<div class="det"><div class="det-top"><button class="btn2" type="button" data-fechar>← Voltar</button><span class="tag">${esc(o.uf)} · ${esc(o.municipio||"")}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${S.analises[id] ? '<span class="pill ok">analisada</span>' : ""}</div>
@@ -1391,6 +1401,79 @@ function blocoEmail(id) {
     ${blocoDecisao(id, m)}
     <div class="acoes"><button class="btn2 prim" type="button" data-email-abrir="${esc(id)}">Abrir no meu e-mail</button><button class="btn2" type="button" data-email-copiar="${esc(id)}">Copiar tudo</button><button class="btn2" type="button" data-email-gerar="${esc(id)}">Refazer</button></div>
     <div class="fonte" id="em-st">Você pode editar o texto antes de enviar. Ele não é enviado sozinho: abre no seu programa de e-mail ou você copia e cola.</div></div></section>`;
+}
+
+/* ============ REDATOR: PROPOSTA DE PREÇOS E PACOTE PARA ASSINAR ============ */
+const U1 = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","catorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
+const U2 = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
+const U3 = ["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
+function ext999(n) {
+  if (n === 100) return "cem"; const c = Math.floor(n / 100), r = n % 100, p = [];
+  if (c) p.push(U3[c]); if (r) p.push(r < 20 ? U1[r] : U2[Math.floor(r / 10)] + (r % 10 ? " e " + U1[r % 10] : ""));
+  return p.join(" e ");
+}
+function extInt(n) {
+  if (n === 0) return "zero"; const g = [[1e9, "bilhão", "bilhões"], [1e6, "milhão", "milhões"], [1e3, "mil", "mil"]], p = [];
+  for (const [v, s, pl] of g) { const q = Math.floor(n / v); if (q) { p.push(v === 1e3 && q === 1 ? "mil" : ext999(q) + " " + (q === 1 ? s : pl)); n %= v; } }
+  if (n) p.push(ext999(n));
+  return p.join(" ").replace(/ (\S+)$/, (m, u) => (p.length > 1 && !/ e /.test(p[p.length - 1]) && (n <= 100 || n % 100 === 0) ? " e " : " ") + u);
+}
+function valorExtenso(v) {
+  const t = Math.round(Math.abs(v) * 100), r = Math.floor(t / 100), c = t % 100, o = [];
+  if (r) o.push(extInt(r) + (r === 1 ? " real" : (r % 1e6 === 0 ? " de reais" : " reais")));
+  if (c) o.push(extInt(c) + (c === 1 ? " centavo" : " centavos"));
+  return o.join(" e ") || "zero real";
+}
+const num = v => { const n = parseFloat(String(v ?? "").replace(/\./g, "").replace(",", ".")); return isFinite(n) ? n : 0; };
+const mo = v => Number(v || 0).toLocaleString("pt-BR", {minimumFractionDigits:2, maximumFractionDigits:2});
+const propDe = id => decDe(id)?.proposta || {};
+const setProp = (id, patch) => setDec(id, {proposta:{...propDe(id), ...patch}});
+const cidadeDe = e => { const m = String(e?.end || "").match(/·\s*([^·/]+?)\s*\/\s*([A-Z]{2})/); return m ? m[1].replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) + "/" + m[2] : ""; };
+const hojeExt = () => new Date().toLocaleDateString("pt-BR", {day:"numeric", month:"long", year:"numeric", timeZone:"America/Sao_Paulo"});
+const faltamCadastro = e => [["razao","razão social"],["cnpj","CNPJ"],["end","endereço"],["rep","representante legal"],["cpf","CPF do representante"],["cargo","cargo do representante"]].filter(([k]) => !String(e?.[k] || "").trim()).map(x => x[1]);
+function totaisProposta(id, itens) {
+  const P = propDe(id).precos || {};
+  const lin = itens.map(x => { const u = num(P[x.numeroItem]), tot = Math.round(u * (Number(x.quantidade) || 0) * 100) / 100, ref = x.orcamentoSigiloso ? 0 : Number(x.valorUnitarioEstimado) || 0; return {x, u, tot, acima: u > 0 && ref > 0 && u > ref + 1e-9, ref}; });
+  return {lin, global: lin.reduce((s, l) => s + l.tot, 0), faltam: lin.filter(l => !l.u).length};
+}
+function blocoProposta(id) {
+  const o = S.ops.find(x => x.id === id), e = emp(), dc = _compraCache[id], pr = propDe(id);
+  const cab = `<section><h3>Redator · proposta de preços</h3><div class="bloco">`;
+  if (!dc) return cab + `<div>O Redator monta a proposta com os itens do PNCP. Você informa o seu preço unitário de cada item, e ele calcula totais e valor global (com valor por extenso), avisa se algum preço passa do valor estimado e gera o Word para assinar.</div><div><button class="btn2 prim" type="button" data-prop-carregar="${esc(id)}">Montar proposta de preços</button></div>${S.erroProp?.[id] ? `<div class="aviso">${esc(S.erroProp[id])}</div>` : ""}</div></section>`;
+  const T = totaisProposta(id, dc.itens), falt = faltamCadastro(e);
+  const campo = (k, rot, ph, v) => `<label class="fonte" style="margin:0">${rot}<input class="em-in" data-prop-campo="${k}" data-prop-id="${esc(id)}" value="${esc(v ?? "")}" placeholder="${esc(ph)}"></label>`;
+  return cab + (falt.length ? `<div class="aviso">Faltam no cadastro da empresa: ${esc(falt.join(", "))}. Os documentos saem com esses campos em branco. <button class="lnk" type="button" data-view="empresa">Completar cadastro</button></div>` : "") +
+    (dc.itens.length ? `<div style="overflow-x:auto"><table class="prop"><thead><tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Seu preço unit. (R$)</th><th>Total (R$)</th></tr></thead><tbody>` +
+      T.lin.map(l => `<tr><td>${l.x.numeroItem}</td><td title="${esc(l.x.descricao)}">${esc(corta(l.x.descricao, 90))}<small>${esc(l.x.unidadeMedida || "")}${l.ref ? " · estimado " + esc(brl(l.ref)) : l.x.orcamentoSigiloso ? " · orçamento sigiloso" : ""}</small></td><td>${esc(unico(l.x.quantidade))}</td>
+        <td><input class="em-in" inputmode="decimal" data-prop-preco="${l.x.numeroItem}" data-prop-id="${esc(id)}" value="${esc((pr.precos || {})[l.x.numeroItem] ?? "")}" placeholder="0,00" aria-label="Preço unitário do item ${l.x.numeroItem}"></td>
+        <td class="tot" id="pt_${l.x.numeroItem}">${l.tot ? mo(l.tot) : "—"}${l.acima ? '<small class="falta">acima do estimado</small>' : ""}</td></tr>`).join("") + `</tbody></table></div>` : `<div class="aviso">O órgão não detalhou itens no PNCP. Informe os itens no Word depois de baixar.</div>`) +
+    `<div class="valg">Valor global: <b id="pt_global">${mo(T.global)}</b> <span id="pt_ext" class="fonte" style="margin:0">${T.global ? "(" + valorExtenso(T.global) + ")" : ""}</span></div>
+    <div id="pt_aviso" class="fonte" style="margin:0">${T.faltam ? T.faltam + " item(ns) sem preço." : "Todos os itens têm preço."}</div>
+    ${campo("validade", "Validade da proposta (dias)", "60", pr.validade ?? "60")}${campo("prazo", "Prazo de entrega/execução", "ex.: 15 dias corridos após a ordem de fornecimento", pr.prazo ?? "")}
+    ${campo("pagamento", "Condições de pagamento", "ex.: 30 dias após o aceite da nota fiscal", pr.pagamento ?? "")}${campo("banco", "Dados bancários (opcional)", "Banco, agência e conta", pr.banco ?? "")}
+    ${campo("marca", "Marca/modelo ou observações (opcional)", "", pr.marca ?? "")}
+    <div class="acoes"><button class="btn2 prim" type="button" data-prop-doc="${esc(id)}">Baixar pacote em Word</button><button class="btn2" type="button" data-prop-pdf="${esc(id)}">Imprimir / salvar em PDF</button></div>
+    <div class="fonte" style="margin:0">O pacote reúne a proposta de preços e as declarações, cada uma em sua página, com local e data de hoje. Revise tudo antes de assinar.</div></div></section>`;
+}
+function htmlPacote(id) {
+  const o = S.ops.find(x => x.id === id), e = emp() || {}, dc = _compraCache[id], pr = propDe(id), T = totaisProposta(id, dc?.itens || []), c = dc?.compra || {};
+  const rep = e.rep || "[REPRESENTANTE LEGAL]", local = cidadeDe(e) || "[Local]", orgao = c.orgaoEntidade?.razaoSocial || o.orgao, numero = `${c.numeroCompra || o.numero_compra || "[Nº]"}/${c.anoCompra || o.ano || "[ANO]"}`;
+  const ass = `<p style="margin-top:48px">${esc(local)}, ${esc(hojeExt())}.</p><p style="margin-top:40px">______________________________<br>${esc(rep)}<br>${esc(e.cargo || "[Cargo]")}</p>`;
+  const linhas = T.lin.map(l => `<tr><td>${l.x.numeroItem}</td><td>${esc(l.x.descricao)}</td><td>${esc(l.x.unidadeMedida || "")}</td><td align="right">${esc(unico(l.x.quantidade))}</td><td align="right">${l.u ? mo(l.u) : ""}</td><td align="right">${l.tot ? mo(l.tot) : ""}</td></tr>`).join("");
+  let h = `<h2 style="text-align:center">PROPOSTA DE PREÇOS</h2><p><b>${esc(c.modalidadeNome || o.modalidade || "Licitação")} nº ${esc(numero)}</b>${c.processo || o.processo ? " · Processo " + esc(c.processo || o.processo) : ""}<br>Ao(À) ${esc(orgao)}</p>
+    <p>A empresa <b>${esc(e.razao || "[RAZÃO SOCIAL]")}</b>, CNPJ ${esc(e.cnpj || "[CNPJ]")}${e.end ? ", com sede em " + esc(e.end) : ""}, representada por ${esc(rep)}${e.cpf ? ", CPF " + esc(e.cpf) : ""}, apresenta sua proposta para o objeto abaixo:</p>
+    <p><b>Objeto:</b> ${esc(c.objetoCompra || o.objeto)}</p>
+    ${linhas ? `<table><thead><tr><th>Item</th><th>Descrição</th><th>Un.</th><th>Qtd.</th><th>Valor unit. (R$)</th><th>Valor total (R$)</th></tr></thead><tbody>${linhas}</tbody></table>` : "<p>[Relacionar os itens, quantidades e preços]</p>"}
+    <p><b>Valor global da proposta: R$ ${mo(T.global)}</b>${T.global ? " (" + esc(valorExtenso(T.global)) + ")" : ""}.</p>
+    <p><b>Validade da proposta:</b> ${esc(pr.validade || "60")} dias, contados da data de abertura das propostas.</p>
+    ${pr.prazo ? `<p><b>Prazo de entrega/execução:</b> ${esc(pr.prazo)}.</p>` : ""}${pr.pagamento ? `<p><b>Condições de pagamento:</b> ${esc(pr.pagamento)}.</p>` : ""}${pr.marca ? `<p><b>Marca/modelo e observações:</b> ${esc(pr.marca)}.</p>` : ""}${pr.banco ? `<p><b>Dados bancários:</b> ${esc(pr.banco)}.</p>` : ""}
+    <p>Declaramos que nos preços propostos estão incluídos todos os custos e despesas, tais como tributos, encargos, fretes, seguros e quaisquer outros necessários ao cumprimento integral do objeto, e que concordamos com todas as condições do edital.</p>${ass}`;
+  declaracoes(o).forEach(([t, txt]) => { h += `<div class="pb"><h3 style="text-align:center">${esc(t.toUpperCase())}</h3><p style="white-space:pre-wrap">${esc(txt.split("\n\n[Local]")[0])}</p>${ass}</div>`; });
+  return h;
+}
+function docWord(corpo, titulo) {
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
+    <style>@page{size:A4;margin:2cm}body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.4}table{border-collapse:collapse;width:100%}td,th{border:1px solid #000;padding:4px;font-size:10pt;vertical-align:top}th{background:#e8eef7}.pb{page-break-before:always}</style></head><body>${corpo}</body></html>`;
 }
 
 
@@ -1733,6 +1816,14 @@ function aoClicar(ev) {
   if (D.decEnviado) { const id = D.decEnviado, m = (mapasDe(S.empId).emails || {})[id]; setDec(id, {enviado_em:new Date().toISOString(), para:m?.para || "", resposta:null}); if (colDe({id}) === "farejadas") setCol(id, "analise"); salvar(); render(); gaveta(id, true); return; }
   if (D.decResp) { const [r, ...resto] = D.decResp.split(":"), id = resto.join(":"); setDec(id, {resposta:r, respondido_em:new Date().toISOString()}); setCol(id, r === "sim" ? "participar" : "descartadas"); salvar(); render(); gaveta(id, true); return; }
   if (D.decDesfazer) { const id = D.decDesfazer; setDec(id, null); salvar(); render(); gaveta(id, true); return; }
+  if (D.propCarregar) { const id = D.propCarregar, o = S.ops.find(x => x.id === id); if (!o) return; (S.erroProp = S.erroProp || {})[id] = ""; dadosCompra(o).then(() => gaveta(id, true), err => { S.erroProp[id] = err instanceof TypeError ? "Não consegui falar com o PNCP. Confira a conexão." : err.message; gaveta(id, true); }); return; }
+  if (D.propDoc || D.propPdf) {
+    const id = D.propDoc || D.propPdf, o = S.ops.find(x => x.id === id); if (!o || !_compraCache[id]) return;
+    const html = docWord(htmlPacote(id), "Proposta " + o.orgao);
+    if (D.propDoc) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff", html], {type:"application/msword"})); a.download = "proposta-" + (o.numero_compra || "licitacao") + "-" + (o.ano || "") + ".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+    else { const w = window.open("", "_blank"); if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); } }
+    return;
+  }
   if (D.emailGerar) { prepararEmail(D.emailGerar); return; }
   if (D.emailCopiar || D.emailAbrir) {
     const id = D.emailCopiar || D.emailAbrir, m = (mapasDe(S.empId).emails || {})[id]; if (!m || !m.corpo) return;
@@ -1763,7 +1854,19 @@ function addEvitar() {
 document.addEventListener("click", aoClicar);
 let _tObs = 0;
 document.addEventListener("input", ev => {   // observações da licitação: salva sozinho
-  const t = ev.target; if (t.dataset && t.dataset.emailCampo) { const m = (mapasDe(S.empId).emails || {})[t.dataset.emailId]; if (m) m[t.dataset.emailCampo] = t.value; return; }
+  const t = ev.target;
+  if (t.dataset && (t.dataset.propPreco !== undefined || t.dataset.propCampo)) {
+    const id = t.dataset.propId;
+    if (t.dataset.propPreco !== undefined) setProp(id, {precos:{...(propDe(id).precos || {}), [t.dataset.propPreco]:t.value}}); else setProp(id, {[t.dataset.propCampo]:t.value});
+    if (t.dataset.propPreco !== undefined && _compraCache[id]) {   // recalcula na tela sem refazer o bloco (não perde o foco)
+      const T = totaisProposta(id, _compraCache[id].itens);
+      T.lin.forEach(l => { const c = $("#pt_" + l.x.numeroItem); if (c) c.innerHTML = (l.tot ? mo(l.tot) : "—") + (l.acima ? '<small class="falta">acima do estimado</small>' : ""); });
+      $("#pt_global") && ($("#pt_global").textContent = mo(T.global)); $("#pt_ext") && ($("#pt_ext").textContent = T.global ? "(" + valorExtenso(T.global) + ")" : "");
+      $("#pt_aviso") && ($("#pt_aviso").textContent = T.faltam ? T.faltam + " item(ns) sem preço." : "Todos os itens têm preço.");
+    }
+    clearTimeout(_tObs); _tObs = setTimeout(() => salvar(), 600); return;
+  }
+  if (t.dataset && t.dataset.emailCampo) { const m = (mapasDe(S.empId).emails || {})[t.dataset.emailId]; if (m) m[t.dataset.emailCampo] = t.value; return; }
   if (!t.dataset || t.dataset.obs === undefined) return;
   setObs(t.dataset.obs, t.value); clearTimeout(_tObs);
   $("#obs-st") && ($("#obs-st").textContent = "Salvando…");
