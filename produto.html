@@ -486,6 +486,15 @@ function novaEmpresa(dados = {}) {
   S.empresas.push(e); S.empId = e.id; S.areaSel = null; S.res[e.id] = null; recomporOps(); return e;
 }
 
+// Memória entre buscas: o que já apareceu antes não volta como novidade, e o que o usuário já trabalhou (analisou, vai participar, descartou) nunca some da busca seguinte.
+function marcarNovas(e, prev, itens, quando) {
+  const col = S.col[e.id] || {}, vistos = {...(prev?.vistos || Object.fromEntries((prev?.itens || []).map(o => [o.id, prev.quando])))};
+  const ids = new Set(itens.map(o => o.id)); let manteve = 0;
+  for (const o of prev?.itens || []) if (!ids.has(o.id) && (col[o.id] || "farejadas") !== "farejadas") { itens.push({...o, fora_da_busca:true}); manteve++; }   // já trabalhada: continua no quadro
+  let novas = 0;
+  for (const o of itens) { const antes = vistos[o.id]; o.nova = !!prev && !antes; o.visto_em = antes || quando; if (o.nova) novas++; if (!antes) vistos[o.id] = quando; }
+  return {itens, vistos, novas, manteve};
+}
 function recomporOps() {   // só o que o Farejador buscou para a empresa ativa (ou a demonstração, se o usuário pedir)
   const r = S.res[S.empId];
   S.ops = S.demo && SNAPSHOT ? SNAPSHOT.oportunidades : (r ? r.itens : []); _memo.k = "";
@@ -755,14 +764,15 @@ async function iniciarFarejador(modo) {
   try { if (totalPares) await Promise.all([trabalhar(0), trabalhar(1)]); }
   catch (err) { f.erro = err.message || String(err); }
   const agoraISO = new Date().toISOString();
+  const m = marcarNovas(e, prev, [...achadas.values(), ...dePalavra.values()], agoraISO);
   S.res[e.id] = soPalavras
-    ? {...prev, versao:2, quando:agoraISO, ufs:[...new Set([...(prev?.ufs || []), ...e.ufs])], palavras:[...palavras], porPalavra, itens:[...achadas.values(), ...dePalavra.values()]}
-    : {versao:2, quando:agoraISO, quandoAtividades:agoraISO, ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, mods:[...e.mods], dias:e.dias, lidas:f.lidas, ignoradas:f.ignoradas || 0, duracao:Date.now() - f.ini, itens:[...achadas.values(), ...dePalavra.values()]};
+    ? {...prev, versao:2, quando:agoraISO, vistos:m.vistos, novas:m.novas, ufs:[...new Set([...(prev?.ufs || []), ...e.ufs])], palavras:[...palavras], porPalavra, itens:m.itens}
+    : {versao:2, vistos:m.vistos, novas:m.novas, quando:agoraISO, quandoAtividades:agoraISO, ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, mods:[...e.mods], dias:e.dias, lidas:f.lidas, ignoradas:f.ignoradas || 0, duracao:Date.now() - f.ini, itens:m.itens};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
   const total = achadas.size + dePalavra.size, nP = palavras.length;
   const parteP = nP ? `${nP} palavra${nP > 1 ? "s" : ""}-chave pesquisada${nP > 1 ? "s" : ""} (${[...Object.values(porPalavra)].reduce((x, y) => x + y, 0)} licitações)` : "";
-  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${total}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ` + (soPalavras ? parteP : `${f.lidas} editais lidos${nP ? " e " + parteP : ""} (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados)`) + `. ${total} licitações no total.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
+  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${total}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ` + (soPalavras ? parteP : `${f.lidas} editais lidos${nP ? " e " + parteP : ""} (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados)`) + `. ${total} licitações no total` + (prev ? `, ${m.novas} nova${m.novas === 1 ? "" : "s"} desde a busca anterior${m.manteve ? `; ${m.manteve} que você já trabalhou continuam no quadro` : ""}` : "") + "." + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
   if (S.empId === e.id) recomporOps(); render();
 }
 
@@ -1119,7 +1129,7 @@ function sala(m) {
 function filtradas(col) {
   const q = S.q.trim().toLowerCase();
   let r = universo().filter(o => colDe(o) === col && (col !== "farejadas" || vigente(o)) &&
-    (!S.uf || o.uf === S.uf) && (!S.fase || faseDe(o) === S.fase) && (!q || (o.objeto + " " + o.orgao + " " + (o.municipio||"")).toLowerCase().includes(q)));
+    (!S.uf || o.uf === S.uf) && (!S.fase || faseDe(o) === S.fase) && (!S.soNovas || o.nova) && (!q || (o.objeto + " " + o.orgao + " " + (o.municipio||"")).toLowerCase().includes(q)));
   r.sort(S.ordem === "prazo"
     ? (a,b) => (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9")
     : (a,b) => (b._pts||0) - (a._pts||0) || (a.encerramento_proposta||"9").localeCompare(b.encerramento_proposta||"9"));
@@ -1137,7 +1147,7 @@ function card(o) {
     <div class="org">${esc(o.uf)} · ${esc(o.orgao)}</div>
     <div class="obj">${esc(o.objeto)}</div>
     <div class="meta"><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade||"")}</span></div>
-    <div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}${obsDe(o.id) ? '<span class="pill">com observações</span>' : ""}</div>
+    <div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span>${(o._hit||[]).slice(0,2).map(h => `<span class="pill">${esc(h)}</span>`).join("")}${o.nova ? '<span class="pill ok">NOVA</span>' : (colDe(o) === "farejadas" && o.visto_em ? `<span class="pill" title="Já apareceu em busca anterior">vista em ${esc(fmtData(o.visto_em).slice(0, 5))}</span>` : "")}${o.fora_da_busca ? '<span class="pill warn" title="Não apareceu na última busca (pode ter encerrado), mas você já trabalhou nela">fora da última busca</span>' : ""}${S.analises[o.id] ? '<span class="pill ok">analisada</span>' : ""}${obsDe(o.id) ? '<span class="pill">com observações</span>' : ""}</div>
     <div class="acoes">${bt.map(([to,t,p]) => `<button type="button" class="acao ${p?"prim":""}" data-mover="${esc(o.id)}" data-to="${to}">${t}</button>`).join("")}</div></div>`;
 }
 
@@ -1380,7 +1390,7 @@ function renderOport() {
   const ufs = [...new Set(U.map(o => o.uf).filter(Boolean))].sort();
   const nf = {recebendo:0, a_receber:0}; U.filter(vigente).forEach(o => nf[faseDe(o)]++);
   $("#ufs").innerHTML = `<button class="chip" type="button" aria-pressed="${!S.uf}" data-uf="">Todos os estados</button>` + ufs.map(u => `<button class="chip" type="button" aria-pressed="${S.uf===u}" data-uf="${u}">${u}</button>`).join("") +
-    `<span class="sep"></span><button class="chip" type="button" aria-pressed="${!S.fase}" data-fase="">Todas as fases</button>` + Object.entries(FASES).map(([k, t]) => `<button class="chip" type="button" aria-pressed="${S.fase === k}" data-fase="${k}">${t} <b>${nf[k]}</b></button>`).join("");
+    `<span class="sep"></span><button class="chip" type="button" aria-pressed="${!S.fase}" data-fase="">Todas as fases</button>` + Object.entries(FASES).map(([k, t]) => `<button class="chip" type="button" aria-pressed="${S.fase === k}" data-fase="${k}">${t} <b>${nf[k]}</b></button>`).join("") + `<span class="sep"></span><button class="chip" type="button" aria-pressed="${!!S.soNovas}" data-so-novas>Só as novas <b>${U.filter(o => o.nova && colDe(o) === "farejadas" && vigente(o)).length}</b></button>`;
   $("#kanban").innerHTML = COLS.map(([k,t]) => {
     const l = filtradas(k), lim = S.limite[k] || 50, vis = l.slice(0, lim);
     const vazio = {farejadas:(!S.res[S.empId] && !S.demo) ? "Nenhuma oportunidade carregada para esta empresa. Clique em Iniciar Farejador." : "Nenhuma oportunidade com esses filtros.",analise:"Clique em Analisar numa oportunidade para o Analista ler o edital.",participar:"Quando você decidir participar, o Despachante confere os documentos e o Redator prepara a proposta.",descartadas:"O que você descartar fica aqui e pode voltar ao quadro."}[k];
@@ -1510,6 +1520,7 @@ function aoClicar(ev) {
   if (D.view) { lerForm(); salvar(); return irPara(D.view); }
   if ("fechar" in D) return fecharGaveta();
   if (D.uf !== undefined) { S.uf = D.uf; render(); return; }
+  if ("soNovas" in D) { S.soNovas = !S.soNovas; render(); return; }
   if (D.fase !== undefined) { S.fase = D.fase || ""; render(); return; }
   if (D.mais) { S.limite[D.mais] = (S.limite[D.mais]||20) + 20; render(); return; }
   if (D.areaSel !== undefined) { S.areaSel = D.areaSel || null; render(); return; }
