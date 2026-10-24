@@ -295,6 +295,8 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 .login-card input{font:15px var(--f-body);color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:11px 12px;width:100%}
 .splash{font:600 14px var(--f-mono);color:var(--muted)}
 
+.tchip small{font:600 10px var(--f-mono);background:var(--accent-soft);color:var(--accent-text);border-radius:999px;padding:1px 6px;margin-left:4px}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -431,7 +433,7 @@ try {
 } catch(e){}
 const lerRes = id => { try { return JSON.parse(localStorage.getItem("tl_res_" + id) || "null"); } catch(e) { return null; } };
 const gravarRes = (id, r) => { if (S.user) { _sync.busca.add(id); agendarSync(); return true; } try { localStorage.setItem("tl_res_" + id, JSON.stringify(r)); return true; } catch(e) { return false; } };
-S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
+S.empresas.forEach(e => { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; S.res[e.id] = lerRes(e.id); });
 try { S.compacta = localStorage.getItem("tl_ui_compacta") === "1"; } catch(e) {}
 const salvarLocal = () => { try { localStorage.setItem("tl_v2", JSON.stringify({empresas:S.empresas, empId:S.empId, col:S.col, obs:S.obs})); } catch(e){} };
 const salvar = () => { if (S.user) { try { localStorage.setItem("tl_empresa_" + S.user.id, S.empId || ""); } catch(e) {} agendarSync(); } else salvarLocal(); };
@@ -468,7 +470,7 @@ function sugerirAreas(e) {
   return n;
 }
 function novaEmpresa(dados = {}) {
-  const e = {id:novoUuid(), razao:"", fantasia:"", cnpj:"", porte:"", end:"", rep:"", cargo:"", cpf:"", cnaes:[], areas:[], evitar:[], docs:[], ufs:[], mods:[6, 8], dias:45, ...dados};
+  const e = {id:novoUuid(), razao:"", fantasia:"", cnpj:"", porte:"", end:"", rep:"", cargo:"", cpf:"", cnaes:[], areas:[], evitar:[], palavras:[], docs:[], ufs:[], mods:[6, 8], dias:45, ...dados};
   S.empresas.push(e); S.empId = e.id; S.areaSel = null; S.res[e.id] = null; recomporOps(); return e;
 }
 
@@ -485,13 +487,13 @@ const FASES = {recebendo:"Recebendo proposta", a_receber:"A receber proposta"};
 function motivoDesatualizada() {
   const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo) return "";
   if (!r.versao || r.versao < 2) return "Esta busca é de uma versão anterior e pode incluir licitações revogadas, anuladas ou suspensas. Clique em Iniciar Farejador para buscar de novo.";
-  return buscaDesatualizada() ? "As atividades ou os estados mudaram depois da última busca. Clique em Iniciar Farejador para buscar de novo." : "";
+  return buscaDesatualizada() ? "As atividades, as palavras-chave ou os estados mudaram depois da última busca. Clique em Iniciar Farejador para buscar de novo." : "";
 }
 function buscaDesatualizada() {   // atividades ou estados mudaram depois da última busca
-  const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo || r.soPalavras) return false;
+  const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo) return false;
   const termos = new Set((r.termos || []).map(norm));
   const novos = e.areas.filter(a => a.ativa).flatMap(a => a.termos).some(t => !termos.has(norm(t)));
-  return novos || e.ufs.some(u => !(r.ufs || []).includes(u));
+  return novos || e.ufs.some(u => !(r.ufs || []).includes(u)) || (e.palavras || []).some(k => !(r.palavras || []).includes(k));
 }
 let _memo = {k:"", v:[]};
 function casados() {            // oportunidades que casam com as atividades da empresa ativa, com as palavras que casaram
@@ -500,11 +502,11 @@ function casados() {            // oportunidades que casam com as atividades da 
   const k = [S.ops.length, S.ops[0]?.id, S.empId, S.areaSel, JSON.stringify(termos), evitar.join("|")].join("#");
   if (_memo.k === k) return _memo.v;
   let v;
-  if (!termos.length) v = e ? S.ops.filter(o => o.via === "palavra" && S.areaSel == null).map(o => Object.assign(o, {_pts:10, _hit:[o.palavra]})) : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
+  if (!termos.length) v = e ? S.ops.filter(o => o.via === "palavra" && (S.areaSel == null || S.areaSel === "__palavras")).map(o => Object.assign(o, {_pts:10, _hit:[o.palavra]})) : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
   else {
     v = [];
     for (const o of S.ops) {
-      if (o.via === "palavra") { if (S.areaSel == null) { o._hit = [o.palavra]; o._pts = 10; v.push(o); } continue; }   // veio de uma busca por palavra-chave: o usuário pediu, não depende das atividades
+      if (o.via === "palavra") { if (S.areaSel == null || S.areaSel === "__palavras") { o._hit = [o.palavra]; o._pts = 10; v.push(o); } continue; }   // veio de uma busca por palavra-chave: o usuário pediu, não depende das atividades
       const t = o._n || (o._n = norm(o.objeto));
       if (evitar.some(x => t.includes(x))) continue;
       const hit = [...new Set(termos.filter(([k2]) => reTermo(k2).test(t)).map(x => x[0]))];
@@ -527,7 +529,9 @@ function contagemPorUf() {       // licitações abertas por estado, dentro das 
 function contagemPorArea() {     // quantas licitações abertas casam com cada área ativa da empresa (sem o filtro de área)
   const e = emp(); if (!e) return [];
   const evitar = e.evitar.map(norm).filter(Boolean);
-  return e.areas.filter(a => a.ativa).map(a => ({a, n: S.ops.filter(o => vigente(o) && (() => { const t = o._n || (o._n = norm(o.objeto)); return !evitar.some(x => t.includes(x)) && a.termos.some(k => reTermo(k).test(t)); })()).length}));
+  const lista = e.areas.filter(a => a.ativa).map(a => ({a, n: S.ops.filter(o => vigente(o) && o.via !== "palavra" && (() => { const t = o._n || (o._n = norm(o.objeto)); return !evitar.some(x => t.includes(x)) && a.termos.some(k => reTermo(k).test(t)); })()).length}));
+  if ((e.palavras || []).length) lista.push({a:{id:"__palavras", nome:"Palavras-chave"}, n:S.ops.filter(o => o.via === "palavra" && vigente(o)).length});
+  return lista;
 }
 
 /* ---------- carregamento ---------- */
@@ -669,14 +673,14 @@ function estadoFarejador() { return S.fz; }
 async function iniciarFarejador() {
   const e = emp(), fz = S.fz;
   if (!e || fz.estado === "rodando") return;
-  const termos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), evitar = e.evitar.map(norm).filter(Boolean);
-  if (!termos.length) { S.fz = {estado:"erro", msg:"Defina ao menos uma atividade ativa para o Farejador saber o que procurar."}; return render(); }
+  const termos = e.areas.filter(a => a.ativa).flatMap(a => a.termos), evitar = e.evitar.map(norm).filter(Boolean), palavras = e.palavras || [];
+  if (!termos.length && !palavras.length) { S.fz = {estado:"erro", msg:"Defina ao menos uma atividade ativa ou uma palavra-chave para o Farejador saber o que procurar."}; return render(); }
   if (!e.ufs.length) { S.fz = {estado:"erro", msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
-  const f = S.fz = {estado:"rodando", empId:e.id, parar:false, total:e.ufs.length * e.mods.length, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now()};
+  const f = S.fz = {estado:"rodando", empId:e.id, parar:false, temPalavras:palavras.length > 0, total:termos.length ? e.ufs.length * e.mods.length : 0, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now()};
   const ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), achadas = new Map(), agora = Date.now();
   try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, 1); }
   catch (err) { S.fz = {estado:"erro", msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
-  const pares = e.ufs.flatMap(uf => e.mods.map(m => [uf, m]));
+  const pares = termos.length ? e.ufs.flatMap(uf => e.mods.map(m => [uf, m])) : [];
   const trabalhar = async () => {
     while (pares.length && !f.parar) {
       const [uf, mod] = pares.shift(); let pg = 1, tot = 1; f.paresIni = (f.paresIni || 0) + 1;
@@ -699,11 +703,26 @@ async function iniciarFarejador() {
   };
   try { await Promise.all([trabalhar(), trabalhar()]); }
   catch (err) { f.erro = err.message || String(err); }
-  const mantidos = (S.res[e.id]?.itens || []).filter(o => o.via === "palavra" && !achadas.has(o.id));
-  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], itens:[...achadas.values(), ...mantidos]};
+  // palavras-chave cadastradas: busca do portal, um estado por vez
+  const porPalavra = {}, dePalavra = new Map();
+  if (!f.erro && !f.parar && palavras.length) {
+    f.fasePalavras = true; f.kwTotal = palavras.length * e.ufs.length; f.kwFeitas = 0;
+    try {
+      for (const kw of palavras) {
+        porPalavra[kw] = 0;
+        for (const uf of e.ufs) {
+          if (f.parar) break;
+          for (const it of await buscaPalavraPncp(kw, uf, f)) { if (!dePalavra.has(it.id)) { porPalavra[kw]++; if (!achadas.has(it.id)) { dePalavra.set(it.id, it); f.achadas++; } } }
+          f.kwFeitas++; atualizarProgresso();
+        }
+      }
+    } catch (err) { f.erro = err.message || String(err); }
+  }
+  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], palavras:[...palavras], porPalavra, itens:[...achadas.values(), ...dePalavra.values()]};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
-  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${achadas.size}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ${f.lidas} editais lidos (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados), ${achadas.size} dentro das atividades da empresa.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
+  const total = achadas.size + dePalavra.size;
+  f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${total}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ${f.lidas} editais lidos${palavras.length ? " e " + palavras.length + " palavra" + (palavras.length > 1 ? "s-chave" : "-chave") + " pesquisada" + (palavras.length > 1 ? "s" : "") : ""} (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados), ${total} licitações encontradas.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
   if (S.empId === e.id) recomporOps(); render();
 }
 
@@ -772,37 +791,21 @@ function itemDaBusca(x, kw) {
     modalidade:x.modalidade_licitacao_nome, encerramento_proposta:t(x.data_fim_vigencia), abertura_proposta:t(x.data_inicio_vigencia), link_origem:null,
     arquivos_api:`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${seq}/arquivos`, numero_compra:x.numero, ano:Number(x.ano), processo:null, via:"palavra", palavra:kw};
 }
-async function buscarPalavra(kw) {
-  const e = emp(); kw = (kw || "").trim(); if (!e) return;
-  if (kw.length < 2) { S.kw = {erro:"Digite ao menos 2 letras."}; return renderKw(); }
-  const k = S.kw = {q:kw, carregando:true, msg:"Buscando no PNCP…", itens:[], total:0, ignoradas:0, truncado:false}; renderKw();
-  const ufs = e.ufs.length ? e.ufs : [""], achados = new Map();
-  try {
-    for (const uf of ufs) {
-      for (let pg = 1; pg <= 3; pg++) {   // até 150 resultados por estado
-        k.msg = `Buscando “${kw}”${uf ? " em " + uf : " no Brasil todo"} · página ${pg}…`; renderKw();
-        const p = new URLSearchParams({q:kw, tipos_documento:"edital", ordenacao:"-data", status:"recebendo_proposta", pagina:pg, tam_pagina:50}); if (uf) p.set("ufs", uf);
-        const d = await pncpGet(PNCP_BUSCA + "?" + p, k, pg === 1 && uf === ufs[0] ? 3 : 10);
-        if (pg === 1) { k.total += d.total || 0; if ((d.total || 0) > 150) k.truncado = true; }
-        for (const x of d.items || []) {
-          if (String(x.situacao_id) !== "1" || x.cancelado) { k.ignoradas++; continue; }   // revogada, anulada ou suspensa
-          const it = itemDaBusca(x, kw); if (vigente(it)) achados.set(it.id, it);
-        }
-        if (pg * 50 >= (d.total || 0)) break;
-        await dormir(300);
-      }
+// Uma palavra-chave cadastrada, em um estado: a mesma busca do portal, só licitações recebendo ou a receber proposta.
+async function buscaPalavraPncp(kw, uf, f) {
+  const achados = [];
+  for (let pg = 1; pg <= 3 && !f.parar; pg++) {   // até 150 por palavra e estado
+    f.msg = `Palavra-chave “${kw}” · ${uf} · página ${pg}`;
+    const p = new URLSearchParams({q:kw, tipos_documento:"edital", ordenacao:"-data", status:"recebendo_proposta", pagina:pg, tam_pagina:50, ufs:uf});
+    const d = await pncpGet(PNCP_BUSCA + "?" + p, f);
+    for (const x of d.items || []) {
+      if (String(x.situacao_id) !== "1" || x.cancelado) { f.ignoradas = (f.ignoradas || 0) + 1; continue; }   // revogada, anulada ou suspensa
+      const it = itemDaBusca(x, kw); if (vigente(it)) achados.push(it);
     }
-    k.itens = [...achados.values()].sort((a, b) => (a.encerramento_proposta || "9").localeCompare(b.encerramento_proposta || "9"));
-  } catch (err) { k.erro = err instanceof TypeError ? "Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca fica bloqueada; use o endereço publicado." : "A busca falhou: " + (err.message || err); }
-  k.carregando = false; renderKw();
-}
-function adicionarDaBusca(ids) {
-  const e = emp(), k = S.kw; if (!e || !k) return 0;
-  let r = S.res[e.id]; if (!r) r = S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[], termos:[], itens:[], soPalavras:true};
-  const tem = new Set(r.itens.map(o => o.id)); let n = 0;
-  for (const it of k.itens) if (ids.includes(it.id) && !tem.has(it.id)) { r.itens.push(it); n++; }
-  if (n) { gravarRes(e.id, r); recomporOps(); }
-  return n;
+    if (pg * 50 >= (d.total || 0)) break;
+    await dormir(300);
+  }
+  return achados;
 }
 
 
@@ -1202,9 +1205,11 @@ function barraEstados(e) {
 }
 
 function pctFz() {
-  const f = S.fz; if (!f.total) return 0;
-  const ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = (f.pagsTotais || 0) + Math.max(0, f.total - ini) * med;
-  return Math.max(1, Math.min(99, Math.round((f.pagsFeitas || 0) / Math.max(1, est) * 100)));
+  const f = S.fz;
+  const ini = f.paresIni || 0, med = ini ? (f.pagsTotais || 0) / ini : 0, est = (f.pagsTotais || 0) + Math.max(0, (f.total || 0) - ini) * med;
+  const rastreio = f.total ? Math.min(1, (f.pagsFeitas || 0) / Math.max(1, est)) : 1;
+  const p = !f.temPalavras ? rastreio * 100 : f.fasePalavras ? 85 + 15 * (f.kwFeitas || 0) / Math.max(1, f.kwTotal || 1) : rastreio * 85;
+  return Math.max(1, Math.min(99, Math.round(p)));
 }
 let _tp = 0;
 function atualizarProgresso() {
@@ -1283,21 +1288,6 @@ function viewInicio(m) {
     <section class="painel passos"><h2>Primeiros passos</h2>${passos()}</section></div>`;
 }
 
-function renderKw() {
-  const el = $("#kw-res"); if (!el) return; const k = S.kw;
-  if (!k) { el.innerHTML = ""; return; }
-  if (k.carregando) { el.innerHTML = `<div class="aviso info" role="status">${esc(k.msg)}</div>`; return; }
-  if (k.erro) { el.innerHTML = `<div class="aviso">${esc(k.erro)}</div>`; return; }
-  const no = new Set(S.ops.map(o => o.id)), novos = k.itens.filter(o => !no.has(o.id)), lim = k.limite || 30, e = emp();
-  const ja = e && e.areas.some(a => a.termos.some(t => norm(t) === norm(k.q)));
-  el.innerHTML = `<div class="kw-h"><b>${k.itens.length} ${k.itens.length === 1 ? "licitação" : "licitações"} para “${esc(k.q)}”</b><span>${k.itens.length - novos.length ? (k.itens.length - novos.length) + " já no quadro · " : ""}${k.ignoradas ? k.ignoradas + " revogadas, anuladas ou suspensas ignoradas · " : ""}${k.truncado ? "mostrando as primeiras 150 por estado" : "status: recebendo ou a receber proposta"}</span>
-    <div class="acoes" style="margin:0"><button class="btn2 prim" type="button" data-kw-todas ${novos.length ? "" : "disabled"}>Adicionar todas ao quadro (${novos.length})</button>${ja ? "" : `<button class="btn2" type="button" data-kw-salvar>Salvar “${esc(k.q)}” como atividade da empresa</button>`}<button class="btn2" type="button" data-view="oportunidades">Ver o quadro</button><button class="btn2" type="button" data-kw-limpar>Limpar</button></div></div>` +
-    (k.itens.length ? k.itens.slice(0, lim).map(o => { const d = diasPara(o.encerramento_proposta), dentro = no.has(o.id);
-      return `<div class="kwr"><div class="kwr-t"><span class="org">${esc(o.uf)} · ${esc(o.orgao)}</span><div class="obj">${esc(o.objeto)}</div><div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade || "")}</span></div></div>
-      <div class="kwr-a">${dentro ? '<span class="pill ok">no quadro</span>' : `<button class="acao" type="button" data-kw-add="${esc(o.id)}">Adicionar</button>`}<button class="acao prim" type="button" data-kw-abrir="${esc(o.id)}">Abrir</button></div></div>`; }).join("") +
-      (k.itens.length > lim ? `<button class="mais" type="button" data-kw-mais>Mostrar mais ${Math.min(30, k.itens.length - lim)}</button>` : "") : '<div class="vazio">Nenhuma licitação recebendo proposta com essa palavra nos estados da empresa.</div>');
-}
-
 function renderOport() {
   $("#empbar2").innerHTML = empbar() + fzStrip();
   const U = universo();
@@ -1344,11 +1334,12 @@ function viewDocumentos() {
 
 const chipsTermos = (lista, attr) => lista.map((t,j) => `<span class="tchip">${esc(t)}<button type="button" aria-label="Remover ${esc(t)}" ${attr}="${j}">×</button></span>`).join("");
 
-function kwBox() {
-  return `<section class="painel kwbox"><h2>Buscar por palavra-chave no PNCP</h2>
-    <p class="fonte" style="margin:0">Procura nos editais que estão recebendo proposta ou vão receber, nos estados da empresa (nenhum estado marcado: Brasil todo). Os resultados podem ir para o quadro da empresa ou virar uma atividade de busca.</p>
-    <div class="kw-row"><input type="search" id="kw-q" placeholder="Ex.: cadeira ergonômica, toner, notebook" aria-label="Palavra-chave" value="${esc(S.kwTexto || "")}"><button class="btn2 prim" type="button" data-kw-buscar>Buscar no PNCP</button></div>
-    <div id="kw-res"></div></section>`;
+function palavrasBox(e) {
+  const por = S.res[e.id]?.porPalavra || {};
+  return `<section class="painel"><h2>Palavras-chave</h2><p class="fonte">Cadastre as palavras que a empresa quer acompanhar. Quando o Farejador roda, ele procura cada uma no PNCP (a mesma busca do portal, que também olha os itens da licitação), nos estados da empresa, só em licitações recebendo ou a receber proposta. Prefira expressões específicas, como “cadeira ergonômica”.</p>
+    <div class="chips">${(e.palavras || []).map((k, j) => `<span class="tchip">${esc(k)}${por[k] != null ? ` <small title="encontradas na última busca">${por[k]}</small>` : ""}<button type="button" aria-label="Remover ${esc(k)}" data-palavra-del="${j}">×</button></span>`).join("") || '<span class="fonte" style="margin:0">Nenhuma palavra-chave cadastrada.</span>'}</div>
+    <div class="add"><input id="nova_palavra" placeholder="Ex.: cadeira ergonômica, toner original" aria-label="Nova palavra-chave"><button class="btn2 prim" type="button" data-palavra-add>Adicionar</button></div>
+    ${(e.palavras || []).length ? '<div><button class="btn2" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div>' : ""}</section>`;
 }
 function cfgAnalista() {
   return `<section class="painel"><h2>Configuração do Analista</h2><p class="fonte">O Analista lê o edital no servidor (Supabase), onde fica a chave da Anthropic. Aqui você informa o código de acesso que definiu lá (segredo ANALISTA_TOKEN). Ele fica só neste navegador.</p>
@@ -1389,7 +1380,7 @@ function viewEmpresa() {
     <div class="chips" style="margin-top:4px">${Object.entries(MODALIDADES).map(([k, n]) => `<label class="sw"><input type="checkbox" data-mod="${k}" ${e.mods.includes(+k) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <label style="display:grid;gap:3px;max-width:260px;font-size:12px;color:var(--muted)">Propostas encerrando nos próximos<select data-dias>${[15,30,45,60,90].map(d => `<option value="${d}" ${e.dias === d ? "selected" : ""}>${d} dias</option>`).join("")}</select></label>
     <div><button class="btn2 prim" type="button" data-fz-iniciar>▶ Iniciar Farejador</button></div></section>`;
-  return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${kwBox()}${onde}${ev}${cfgAnalista()}`;
+  return blocoLocais() + `<div class="emp-grid"><div>${lista}${imp}</div><div>${dados}${cn}</div></div>${ar}${palavrasBox(e)}${onde}${ev}${cfgAnalista()}`;
 }
 
 function render() {
@@ -1400,7 +1391,7 @@ function render() {
   if (S.view === "oportunidades") renderOport();
   if (S.view === "propostas") $("#lista-propostas").innerHTML = viewPropostas();
   if (S.view === "documentos") $("#lista-docs").innerHTML = viewDocumentos();
-  if (S.view === "empresa") { $("#lista-empresa").innerHTML = viewEmpresa(); renderKw(); }
+  if (S.view === "empresa") $("#lista-empresa").innerHTML = viewEmpresa();
   renderModal();
 }
 function irPara(v) {
@@ -1444,13 +1435,6 @@ function aoClicar(ev) {
   if ("importarLocais" in D) { importarLocais().then(n => { S.msg = n ? `${n} empresa${n > 1 ? "s enviadas" : " enviada"} para a sua conta.` : ""; render(); }); return; }
   if ("fzIniciar" in D) return iniciarFarejador();
   if (D.analisar) return analisarEdital(D.analisar);
-  if ("kwBuscar" in D) return buscarPalavra($("#kw-q").value);
-  if ("kwLimpar" in D) { S.kw = null; return renderKw(); }
-  if ("kwMais" in D) { S.kw.limite = (S.kw.limite || 30) + 30; return renderKw(); }
-  if (D.kwAdd) { adicionarDaBusca([D.kwAdd]); salvar(); return render(); }
-  if ("kwTodas" in D) { const n = adicionarDaBusca(S.kw.itens.map(o => o.id)); salvar(); S.msg = ""; render(); return; }
-  if (D.kwAbrir) { adicionarDaBusca([D.kwAbrir]); salvar(); render(); return abrirDetalhe(D.kwAbrir, false); }
-  if ("kwSalvar" in D) { const e0 = emp(), kw = S.kw.q; if (e0 && !e0.areas.some(a => a.termos.some(t => norm(t) === norm(kw)))) { e0.areas.push({id:"x" + novoId(), nome:kw.charAt(0).toUpperCase() + kw.slice(1), ativa:true, termos:[kw]}); } return mudouTermos(); }
   if ("salvarToken" in D) { gravarToken($("#tok_analista").value.trim()); S.msgTok = "Código salvo neste navegador."; return render(); }
   if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
   if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
@@ -1475,6 +1459,8 @@ function aoClicar(ev) {
   if ("areaLivre" in D) { e.areas.push({id:"x" + novoId(), nome:"Nova área", ativa:true, termos:[]}); mudouTermos(); setTimeout(() => $(".area:last-of-type .area-nome")?.focus(), 30); return; }
   if (D.termoAdd !== undefined) return addTermo(+D.termoAdd);
   if (D.termoDel) { const [i, j] = D.termoDel.split(":").map(Number); e.areas[i].termos.splice(+t.dataset.j, 1); return mudouTermos(); }
+  if ("palavraAdd" in D) return addPalavra();
+  if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { e.palavras.splice(+D.palavraDel, 1); return mudouTermos(); }
   if ("evitarAdd" in D) return addEvitar();
   if (D.evitarDel !== undefined && t.hasAttribute("data-evitar-del")) { e.evitar.splice(+D.evitarDel, 1); return mudouTermos(); }
   if (D.copiar) { const txt = $("#"+D.copiar).textContent; (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => t.textContent = "Copiado", () => { const r = document.createRange(); r.selectNodeContents($("#"+D.copiar)); getSelection().removeAllRanges(); getSelection().addRange(r); t.textContent = "Selecionado: use Ctrl+C"; }); return; }
@@ -1484,13 +1470,17 @@ function addTermo(i) {
   v.split(",").map(x => x.trim()).filter(Boolean).forEach(x => { if (!e.areas[i].termos.some(y => norm(y) === norm(x))) e.areas[i].termos.push(x); });
   mudouTermos(); setTimeout(() => $((S.modal ? "#mtermo_" : "#termo_") + i)?.focus(), 30);
 }
+function addPalavra() {
+  const e = emp(), v = ($("#nova_palavra")?.value || "").trim(); if (!e || !v) return;
+  v.split(/[,;]/).map(x => x.trim()).filter(x => x.length >= 2).forEach(x => { if (!e.palavras.some(y => norm(y) === norm(x))) e.palavras.push(x); });
+  mudouTermos(); setTimeout(() => $("#nova_palavra")?.focus(), 30);
+}
 function addEvitar() {
   const e = emp(), v = ($("#novo_evitar")?.value || "").trim(); if (!e || !v) return;
   v.split(",").map(x => x.trim()).filter(Boolean).forEach(x => { if (!e.evitar.some(y => norm(y) === norm(x))) e.evitar.push(x); });
   mudouTermos(); setTimeout(() => $("#novo_evitar")?.focus(), 30);
 }
 document.addEventListener("click", aoClicar);
-document.addEventListener("input", ev => { if (ev.target.id === "kw-q") S.kwTexto = ev.target.value; });
 let _tObs = 0;
 document.addEventListener("input", ev => {   // observações da licitação: salva sozinho
   const t = ev.target; if (!t.dataset || t.dataset.obs === undefined) return;
@@ -1500,7 +1490,7 @@ document.addEventListener("input", ev => {   // observações da licitação: sa
 });
 document.addEventListener("keydown", ev => {
   if (ev.key === "Enter" && ev.target.id === "lg-senha") { ev.preventDefault(); entrar($("#lg-email").value.trim(), $("#lg-senha").value); return; }
-  if (ev.key === "Enter" && ev.target.id === "kw-q") { ev.preventDefault(); buscarPalavra(ev.target.value); return; }
+  if (ev.key === "Enter" && ev.target.id === "nova_palavra") { ev.preventDefault(); addPalavra(); return; }
   if (ev.key === "Escape") { if (S.modal) { S.modal = null; render(); } else if (!$("#gaveta").hidden) fecharGaveta(); }
   if (ev.key === "Enter" && ev.target.dataset?.termoIn !== undefined) { ev.preventDefault(); addTermo(+ev.target.dataset.termoIn); return; }
   if (ev.key === "Enter" && ev.target.id === "novo_evitar") { ev.preventDefault(); addEvitar(); return; }
