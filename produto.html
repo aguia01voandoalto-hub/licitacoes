@@ -525,7 +525,7 @@ function novaEmpresa(dados = {}) {
 function marcarNovas(e, prev, itens, quando) {
   const col = S.col[e.id] || {}, vistos = {...(prev?.vistos || Object.fromEntries((prev?.itens || []).map(o => [o.id, prev.quando])))};
   const ids = new Set(itens.map(o => o.id)); let manteve = 0;
-  for (const o of prev?.itens || []) if (!ids.has(o.id) && (col[o.id] || "farejadas") !== "farejadas") { itens.push({...o, fora_da_busca:true}); manteve++; }   // já trabalhada: continua no quadro
+  for (const o of prev?.itens || []) if (!ids.has(o.id) && (col[o.id] || "farejadas") !== "farejadas") { itens.push({...o, fora_da_busca:!o.avulso}); manteve++; }   // já trabalhada: continua no quadro
   let novas = 0;
   for (const o of itens) { const antes = vistos[o.id]; o.nova = !!prev && !antes; o.visto_em = antes || quando; if (o.nova) novas++; if (!antes) vistos[o.id] = quando; }
   return {itens, vistos, novas, manteve};
@@ -558,10 +558,11 @@ function casados() {            // oportunidades que casam com as atividades da 
   const k = [S.ops.length, S.ops[0]?.id, S.empId, S.areaSel, JSON.stringify(termos), evitar.join("|")].join("#");
   if (_memo.k === k) return _memo.v;
   let v;
-  if (!termos.length) v = e ? S.ops.filter(o => o.via === "palavra" && (S.areaSel == null || S.areaSel === "__palavras")).map(o => Object.assign(o, {_pts:10, _hit:[o.palavra]})) : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
+  if (!termos.length) v = e ? S.ops.filter(o => o.avulso ? S.areaSel == null : o.via === "palavra" && (S.areaSel == null || S.areaSel === "__palavras")).map(o => Object.assign(o, {_pts:10, _hit:[o.avulso ? "edital avulso" : o.palavra]})) : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
   else {
     v = [];
     for (const o of S.ops) {
+      if (o.avulso) { if (S.areaSel == null) { o._hit = ["edital avulso"]; o._pts = 10; v.push(o); } continue; }
       if (o.via === "palavra") { if (S.areaSel == null || S.areaSel === "__palavras") { o._hit = [o.palavra]; o._pts = 10; v.push(o); } continue; }   // veio de uma busca por palavra-chave: o usuário pediu, não depende das atividades
       const t = o._n || (o._n = norm(o.objeto));
       if (evitar.some(x => t.includes(x))) continue;
@@ -848,6 +849,36 @@ async function analisarEdital(id, forcar) {
   } catch (err) {
     M.erroAnalise[id] = err.name === "AbortError" ? "A análise demorou demais. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão (no claude.ai essa chamada fica bloqueada)." : err.message;
   } finally { clearTimeout(t); delete M.analisando[id]; if (aqui()) gaveta(id); render(); }
+}
+// Edital avulso: um arquivo que não está no PNCP. Vira uma oportunidade da empresa já em "Em análise".
+const lerBase64 = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => no(new Error("Não consegui ler o arquivo.")); r.readAsDataURL(f); });
+async function enviarAvulso() {
+  const f = $("#avulso_arq")?.files?.[0], e = emp(); if (!e) return;
+  const M = mapasDe(e.id), emp0 = e.id;
+  if (!S.user) { S.avulso = {erro:"Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa."}; return render(); }
+  if (!f) { S.avulso = {erro:"Escolha o arquivo do edital (PDF ou Word)."}; return render(); }
+  if (!/\.(pdf|docx?|zip)$/i.test(f.name)) { S.avulso = {erro:"Formato não suportado. Envie PDF, Word (.doc ou .docx) ou ZIP com o edital."}; return render(); }
+  if (f.size > 18 * 1024 * 1024) { S.avulso = {erro:"O arquivo passa de 18 MB. Envie só o edital, sem os anexos."}; return render(); }
+  const orgao = ($("#avulso_orgao")?.value || "").trim(), objeto = ($("#avulso_obj")?.value || "").trim(), prazo = $("#avulso_prazo")?.value || "";
+  S.avulso = {ocupado:true, nome:f.name}; render();
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 240000);
+  try {
+    const base64 = await lerBase64(f);
+    const r = await chamarAnalista({acao:"avulso", empresa_id:emp0, nome:f.name, base64, opp:{orgao:orgao || null, objeto:objeto || null, encerramento_proposta:prazo ? new Date(prazo).toISOString() : null}}, ctl.signal);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
+    const agora = new Date().toISOString();
+    const o = {id:j.id, orgao:orgao || "Edital avulso", uf:"", municipio:"", objeto:objeto || j.dados.objeto || f.name, valor_estimado:j.dados.valor_estimado_edital ?? null, modalidade:"Edital avulso",
+      encerramento_proposta:prazo ? new Date(prazo).toISOString() : null, abertura_proposta:null, link_origem:null, arquivos_api:null, numero_compra:null, ano:null, processo:null, via:"avulso", avulso:true, nova:false, visto_em:agora};
+    const r0 = S.res[emp0] || (S.res[emp0] = {versao:2, quando:agora, ufs:[], palavras:[], termos:[], itens:[]});
+    r0.itens.push(o); (S.col[emp0] = S.col[emp0] || {})[o.id] = "analise";
+    M.analises[o.id] = j.dados; if (j.documentos?.length) M.docsLic[o.id] = {itens:j.documentos};
+    gravarRes(emp0, r0); salvar(); S.avulso = null;
+    if (S.empId === emp0) { recomporOps(); render(); abrirDetalhe(o.id, false); }
+  } catch (err) {
+    S.avulso = {erro: err.name === "AbortError" ? "A análise demorou demais. Tente com um arquivo menor." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão." : err.message};
+    if (S.empId === emp0) render();
+  } finally { clearTimeout(t); }
 }
 async function testarToken() {
   S.msgTok = "Testando…"; render();
@@ -1311,7 +1342,7 @@ function gaveta(id, manter) {
       ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
       ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
       ${a.local_entrega_execucao || a.prazo_entrega_execucao || a.vigencia_contrato || a.forma_pagamento || a.garantias || a.visita_amostras ? `<div><b>Condições do edital</b></div>${[["Local de entrega/execução", a.local_entrega_execucao], ["Prazo de entrega/execução", a.prazo_entrega_execucao], ["Vigência", a.vigencia_contrato], ["Pagamento", a.forma_pagamento], ["Garantias", a.garantias], ["Visita, amostras ou demonstração", a.visita_amostras]].filter(x => x[1]).map(([k, v]) => `<div class="item"><b>${k}:</b> ${esc(v)}</div>`).join("")}` : ""}
-      ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${S.analisando[id] ? '<div class="aviso info" role="status">O Analista está lendo o edital de novo…</div>' : lerToken() ? `<div><button class="btn2" type="button" data-reanalisar="${esc(id)}">Reanalisar o edital (refaz a leitura e gasta uma análise)</button></div>` : ""}</div>`;
+      ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${S.analisando[id] ? '<div class="aviso info" role="status">O Analista está lendo o edital de novo…</div>' : S.ops.find(x => x.id === id)?.avulso ? "" : lerToken() ? `<div><button class="btn2" type="button" data-reanalisar="${esc(id)}">Reanalisar o edital (refaz a leitura e gasta uma análise)</button></div>` : ""}</div>`;
   } else {
     const run = S.analisando[id], er = S.erroAnalise[id], tok = lerToken();
     R += `<div class="bloco">${run ? '<div class="aviso info" role="status">O Analista está baixando e lendo o edital. Leva de 30 a 90 segundos…</div>' : "<div>Esta oportunidade ainda não foi analisada. O Analista baixa o edital no PNCP, lê e aponta prazos, exigências, riscos e multas, citando a página de cada trecho.</div>"}
@@ -1338,6 +1369,7 @@ const dtHora = z => z ? new Date(z).toLocaleString("pt-BR", {dateStyle:"short", 
 const dtDia = z => z ? new Date(z).toLocaleDateString("pt-BR", {timeZone:"America/Sao_Paulo"}) : "—";
 const unico = (q, n) => q == null ? "—" : Number(q).toLocaleString("pt-BR", {maximumFractionDigits: n ?? 4}).replace(/,00$/, "");
 async function dadosCompra(o) {
+  if (o.avulso) return (_compraCache[o.id] = {compra:{objetoCompra:o.objeto, orgaoEntidade:{razaoSocial:o.orgao}, unidadeOrgao:{}, modalidadeNome:"Edital avulso", dataEncerramentoProposta:null, orcamentoSigilosoCodigo:1, valorTotalEstimado:o.valor_estimado}, itens:[], cnpj:"", ano:"", seq:""});
   const m = String(o.arquivos_api || "").match(/orgaos\/(\d{14})\/compras\/(\d{4})\/(\d+)\/arquivos$/); if (!m) throw new Error("Não consegui identificar a compra no PNCP.");
   if (_compraCache[o.id]) return _compraCache[o.id];
   const [, cnpj, ano, seq] = m, base = `https://pncp.gov.br/api/consulta/v1/orgaos/${cnpj}/compras/${ano}/${seq}`;
@@ -1388,7 +1420,7 @@ function montarEmail(o, a, e, dc) {
   if (a?.penalidades?.length) { L.push("", "Multas e penalidades:"); a.penalidades.slice(0, 6).forEach(r => L.push(`• ${r.descricao}${r.pagina ? " (p. " + r.pagina + ")" : ""}`)); }
   if (a?.lacunas?.length) { L.push("", "O QUE NÃO FOI POSSÍVEL CONFIRMAR (vale conferir no edital):"); a.lacunas.slice(0, 6).forEach(x => L.push("• " + x)); }
   L.push("", "SE A RESPOSTA FOR SIM, OS PRÓXIMOS PASSOS SÃO:", "• Regularizar os documentos marcados com [ATENÇÃO].", "• Preparar as declarações obrigatórias e a proposta de preços (precisamos do seu valor-alvo e margem).", "• Conferir cadastro/credenciamento na plataforma do órgão antes do prazo.");
-  L.push("", "LINKS", `PNCP: https://pncp.gov.br/app/editais/${dc.cnpj}/${dc.ano}/${dc.seq}`); if (c.linkSistemaOrigem || o.link_origem) L.push(`Sistema de origem: ${c.linkSistemaOrigem || o.link_origem}`);
+  L.push("", "LINKS"); if (dc.cnpj) L.push(`PNCP: https://pncp.gov.br/app/editais/${dc.cnpj}/${dc.ano}/${dc.seq}`); if (c.linkSistemaOrigem || o.link_origem) L.push(`Sistema de origem: ${c.linkSistemaOrigem || o.link_origem}`);
   L.push("", "—", `Preparado pelo Time de Licitações${a ? " (análise automática de apoio: confirme os pontos críticos no edital)" : ""}.`);
   return {assunto, corpo: L.join(nl), para: e.resp_email || ""};
 }
@@ -1853,6 +1885,7 @@ function aoClicar(ev) {
     else { const w = window.open("", "_blank"); if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); } }
     return;
   }
+  if ("avulsoEnviar" in D) return enviarAvulso();
   if (D.emailGerar) { prepararEmail(D.emailGerar); return; }
   if (D.emailCopiar || D.emailAbrir) {
     const id = D.emailCopiar || D.emailAbrir, m = (mapasDe(S.empId).emails || {})[id]; if (!m || !m.corpo) return;
@@ -1947,7 +1980,13 @@ function viewAnalista() {
   const linha = (o, acao) => `<div class="lin"><span class="tag">${esc(o.uf)}</span><button class="lnk" type="button" data-abrir-botao="${esc(o.id)}" style="text-align:left;text-decoration:none;color:inherit;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.objeto)}">${esc(o.orgao)} · ${esc(corta(o.objeto, 70))}</button>${acao}</div>`;
   const btn = o => S.analisando[o.id] ? '<span class="pill">lendo o edital…</span>' : S.analises[o.id] ? `<span class="pill ${recCl[S.analises[o.id].recomendacao] || ""}">${esc(recRot[S.analises[o.id].recomendacao] || "pronta")}</span>` : lerToken() && S.user ? `<button class="acao" type="button" data-analisar="${esc(o.id)}" style="flex:none">Analisar</button>` : "";
   const sem = !lerToken() || !S.user;
-  return empbar() + `<div class="kpis"><div class="kpi"><b>${prontas.length}</b><span>análises prontas desta empresa</span></div><div class="kpi"><b>${fila.length}</b><span>em análise (aguardando você)</span></div><div class="kpi"><b>${espera.length}</b><span>aguardando decisão do responsável</span></div></div>` +
+  const av = S.avulso || {}, painelAvulso = `<section class="painel" style="margin-bottom:14px"><h2>Analisar um edital avulso</h2><p class="fonte">Tem um edital que não está no PNCP (recebido por e-mail, de um portal próprio, de um cliente)? Envie o arquivo: o Analista lê, a oportunidade entra em “Em análise” e você segue com e-mail de decisão, proposta e declarações como nas demais.</p>
+    <div class="form" style="max-width:none"><label class="l">Arquivo do edital (PDF, Word ou ZIP, até 18 MB)<input type="file" id="avulso_arq" accept=".pdf,.doc,.docx,.zip,application/pdf" ${av.ocupado ? "disabled" : ""}></label>
+    <label>Órgão (opcional)<input id="avulso_orgao" placeholder="Ex.: Prefeitura de Sinop" ${av.ocupado ? "disabled" : ""}></label><label>Título (opcional)<input id="avulso_obj" placeholder="Ex.: Registro de preços de antenas" ${av.ocupado ? "disabled" : ""}></label>
+    <label>Propostas até (opcional)<input id="avulso_prazo" type="datetime-local" ${av.ocupado ? "disabled" : ""}></label></div>
+    ${av.ocupado ? `<div class="aviso info" role="status">Enviando e lendo “${esc(av.nome)}”. Leva de 30 a 90 segundos…</div>` : `<div><button class="btn2 prim" type="button" data-avulso-enviar>Enviar e analisar</button></div>`}
+    ${av.erro ? `<div class="aviso">${esc(av.erro)}</div>` : ""}</section>`;
+  return empbar() + painelAvulso + `<div class="kpis"><div class="kpi"><b>${prontas.length}</b><span>análises prontas desta empresa</span></div><div class="kpi"><b>${fila.length}</b><span>em análise (aguardando você)</span></div><div class="kpi"><b>${espera.length}</b><span>aguardando decisão do responsável</span></div></div>` +
     (sem ? `<div class="aviso" style="margin-bottom:12px">${!S.user ? "Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa." : "Falta o código de acesso do Analista. Informe em Empresa → Configuração do Analista."} <button class="lnk" type="button" data-view="empresa">Abrir a configuração</button></div>` : "") +
     `<div class="paineis" style="grid-template-columns:1fr 1fr">
     <section class="painel"><h2>Para analisar agora</h2><p class="fonte">As oportunidades mais relevantes que ainda não foram lidas.</p>${sug.map(o => linha(o, btn(o))).join("") || '<div class="vazio">Nada pendente. Rode o Farejador para trazer mais oportunidades.</div>'}</section>

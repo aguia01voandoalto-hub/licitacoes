@@ -257,6 +257,32 @@ async function chamarClaude(conteudo: Conteudo, opp: Record<string, unknown>) {
   throw new Erro(502, "O modelo não devolveu a análise estruturada. Tente de novo.");
 }
 
+// Edital avulso: o usuário envia o arquivo (PDF, Word) que não está no PNCP; vira uma oportunidade da empresa, analisada e guardada como as demais.
+// deno-lint-ignore no-explicit-any
+async function analisarAvulso(db: any, empresa: string, c: any) {
+  const nome = String(c.nome ?? "").slice(0, 200), b64 = String(c.base64 ?? ""), opp = (c.opp ?? {}) as Record<string, unknown>;
+  if (!nome || !b64) throw new Erro(400, "Envie o arquivo do edital.");
+  if (b64.length > MAX_BYTES * 1.4) throw new Erro(413, "O arquivo é grande demais para análise automática (acima de 25 MB).");
+  const limite = Number(Deno.env.get("ANALISTA_LIMITE_DIA") ?? 40);
+  const { count } = await db.from("analises").select("id", { count: "exact", head: true }).like("origem", "analista%").gte("gerada_em", new Date(Date.now() - 864e5).toISOString());
+  if ((count ?? 0) >= limite) throw new Erro(429, `Limite diário de análises atingido (${limite}). Tente amanhã.`);
+  const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const conteudo = await prepararConteudo(bytes, nome);
+  const id = `AV-${crypto.randomUUID()}`, e = ext(nome), path = `${empresa}/${id}/01-${limpar(nome)}`;
+  const up = await db.storage.from("editais").upload(path, bytes, { contentType: MIME[e] ?? "application/octet-stream", upsert: true });
+  const documentos = up.error ? [] : [{ titulo: nome, tipo: "Edital enviado por você", nome, ext: e, bytes: bytes.length,
+    url: `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/editais/${path.split("/").map(encodeURIComponent).join("/")}`, origem: null, publicado_em: new Date().toISOString() }];
+  const analise = await chamarClaude(conteudo, opp);
+  const dados = { ...analise, id, edital: conteudo.arquivo, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas,
+    gerado_por: `Analista (${MODELO}) leu ${conteudo.paginasLidas ? conteudo.paginasLidas + " páginas de " : ""}${conteudo.arquivo}.` };
+  const { error: e1 } = await db.from("oportunidades").insert({ id, orgao: opp.orgao ?? null, objeto: opp.objeto ?? (analise as { objeto?: string }).objeto ?? null, modalidade: "Edital avulso", encerramento_proposta: opp.encerramento_proposta ?? null });
+  if (e1) throw new Erro(500, "Não foi possível registrar o edital: " + e1.message);
+  const { error } = await db.from("analises").insert({ empresa_id: empresa, id, dados, modelo: MODELO, origem: "analista-avulso" });
+  if (error) throw new Erro(500, "A análise ficou pronta, mas não foi possível guardá-la: " + error.message);
+  if (documentos.length) await db.from("documentos").upsert({ empresa_id: empresa, id, itens: documentos, atualizado_em: new Date().toISOString() }, { onConflict: "empresa_id,id" });
+  return { id, dados, documentos };
+}
+
 const tokenOk = (recebido: string | null) => {
   const esperado = Deno.env.get("ANALISTA_TOKEN");
   if (!esperado || !recebido || esperado.length !== recebido.length) return false;
@@ -270,11 +296,13 @@ Deno.serve(async (req) => {
   try {
     if (!Deno.env.get("ANALISTA_TOKEN")) throw new Erro(503, "O código de acesso do Analista ainda não foi configurado no servidor (ANALISTA_TOKEN).");
     if (!tokenOk(req.headers.get("x-analista-token"))) throw new Erro(401, "Código de acesso do Analista incorreto.");
-    const { id, empresa_id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = await req.json();
-    if (!/^\d{14}-\d-\d{6}\/\d{4}$/.test(id ?? "")) throw new Erro(400, "Identificador da licitação inválido.");
-    if (!/^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(arquivos_api ?? "")) throw new Erro(400, "Endereço dos arquivos inválido.");
-
+    const corpo = await req.json();
+    const { id, empresa_id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = corpo;
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(empresa_id ?? "")) throw new Erro(400, "Empresa não informada.");
+    if (acao !== "avulso") {
+      if (!/^\d{14}-\d-\d{6}\/\d{4}$/.test(id ?? "")) throw new Erro(400, "Identificador da licitação inválido.");
+      if (!/^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(arquivos_api ?? "")) throw new Erro(400, "Endereço dos arquivos inválido.");
+    }
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { db: { schema: "licitacoes" } });
     // Tudo é por empresa: quem chama precisa estar logado e ser o dono da empresa informada.
     const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -282,6 +310,7 @@ Deno.serve(async (req) => {
     if (!u?.user) throw new Erro(401, "Entre na sua conta para usar o Analista.");
     const { data: dona } = await db.from("empresas").select("id").eq("id", empresa_id).eq("user_id", u.user.id).maybeSingle();
     if (!dona) throw new Erro(403, "Esta empresa não é da sua conta.");
+    if (acao === "avulso") return json(await analisarAvulso(db, empresa_id, corpo));
     if (acao === "documentos") return json({ documentos: await salvarDocumentos(db, empresa_id, id, arquivos_api) });
     if (!forcar && !dry) {
       const { data } = await db.from("analises").select("dados").eq("empresa_id", empresa_id).eq("id", id).maybeSingle();
