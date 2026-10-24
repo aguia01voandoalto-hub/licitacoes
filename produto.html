@@ -431,7 +431,7 @@ const mi = v => v >= 1e6 ? "R$ " + (v/1e6).toFixed(1).replace(".",",") + " mi" :
 const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const novoId = () => "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-let S = {fase:"", docsLic:{}, obs:{}, analisando:{}, erroAnalise:{}, ops:[], base:[], res:{}, fzs:{}, modal:null, analises:{}, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
+let S = {fase:"", porEmp:{}, obs:{}, ops:[], base:[], res:{}, fzs:{}, modal:null, fonte:"", empresas:[], empId:null, col:{}, areaSel:null, uf:"", q:"", ordem:"relevancia", limite:{farejadas:20}, view:"inicio", aberta:null, msg:""};
 try {
   const j2 = JSON.parse(localStorage.getItem("tl_v2") || "null");
   if (j2) Object.assign(S, {empresas:j2.empresas||[], empId:j2.empId||null, col:j2.col||{}, obs:j2.obs||{}});
@@ -556,12 +556,13 @@ function contagemPorArea() {     // quantas licitações abertas casam com cada 
 }
 
 /* ---------- carregamento ---------- */
-async function carregar() {      // as oportunidades vêm só da busca da empresa; do banco lemos apenas as análises prontas
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/analises?select=*`, {headers:{apikey:SB_KEY, "Accept-Profile":"licitacoes"}});
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    S.analises = Object.fromEntries((await r.json()).map(x => [x.id, x.dados]));
-  } catch (err) { S.analises = SNAPSHOT?.analises || S.analises || {}; }
+async function carregar() {      // as oportunidades vêm só da busca da empresa; do banco lemos apenas as análises prontas, de cada empresa da conta
+  if (S.user && SB) {
+    try {
+      const {data, error} = await SB.from("analises").select("empresa_id,id,dados"); if (error) throw error;
+      for (const x of data || []) mapasDe(x.empresa_id).analises[x.id] = x.dados;
+    } catch (err) { /* sem análises por enquanto: o Analista gera de novo se precisar */ }
+  } else if (SNAPSHOT && S.demo) S.analises = SNAPSHOT.analises || {};
   recomporOps();
 }
 
@@ -699,6 +700,10 @@ async function pncpGet(url, fz, max) {
   }
   throw new Error("o PNCP não respondeu");
 }
+// Análises, documentos e o andamento delas pertencem a cada empresa: S.analises etc. sempre são os da empresa ativa.
+["analises", "docsLic", "analisando", "erroAnalise"].forEach(n => Object.defineProperty(S, n, {configurable:true,
+  get: () => ((S.porEmp[S.empId || "_"] ||= {})[n] ||= {}), set: v => { (S.porEmp[S.empId || "_"] ||= {})[n] = v; }}));
+const mapasDe = id => { const m = (S.porEmp[id] ||= {}); for (const n of ["analises", "docsLic", "analisando", "erroAnalise"]) m[n] ||= {}; return m; };
 // O Farejador é de cada empresa: S.fz sempre é o da empresa ativa. Só uma busca roda por vez (o PNCP limita as consultas).
 const OCIOSO = Object.freeze({estado:"parado"});
 Object.defineProperty(S, "fz", {get: () => S.fzs[S.empId] || OCIOSO, set: v => { S.fzs[v.empId || S.empId] = v; }});
@@ -790,19 +795,24 @@ async function iniciarFarejador(modo) {
 const FN_ANALISTA = SB_URL + "/functions/v1/analista";
 const lerToken = () => { try { return localStorage.getItem("tl_analista_token") || ""; } catch(e) { return ""; } };
 const gravarToken = t => { try { localStorage.setItem("tl_analista_token", t); } catch(e) {} };
-const chamarAnalista = (corpo, sinal) => fetch(FN_ANALISTA, {method:"POST", signal:sinal, headers:{"content-type":"application/json", apikey:SB_KEY, Authorization:"Bearer " + SB_KEY, "x-analista-token":lerToken()}, body:JSON.stringify(corpo)});
+const chamarAnalista = async (corpo, sinal) => {   // a chamada vai com a sessão de quem está logado: o servidor confere que a empresa é da conta
+  let jwt = SB_KEY; try { jwt = (await SB.auth.getSession()).data.session?.access_token || SB_KEY; } catch(e) {}
+  return fetch(FN_ANALISTA, {method:"POST", signal:sinal, headers:{"content-type":"application/json", apikey:SB_KEY, Authorization:"Bearer " + jwt, "x-analista-token":lerToken()}, body:JSON.stringify(corpo)});
+};
 async function analisarEdital(id) {
   const o = S.ops.find(x => x.id === id); if (!o) return;
-  S.analisando[id] = true; delete S.erroAnalise[id]; if (S.aberta === id) gaveta(id);
+  const emp0 = S.empId, M = mapasDe(emp0), aqui = () => S.empId === emp0 && S.aberta === id;   // o resultado volta para a empresa que pediu, mesmo se você trocar de empresa
+  if (!S.user) { M.erroAnalise[id] = "Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa."; return render(); }
+  M.analisando[id] = true; delete M.erroAnalise[id]; if (aqui()) gaveta(id);
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 240000);
   try {
-    const r = await chamarAnalista({id, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
+    const r = await chamarAnalista({id, empresa_id:emp0, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
-    S.analises[id] = j.dados; if (j.documentos?.length) (S.docsLic[id] = S.docsLic[id] || {}).itens = j.documentos;
+    M.analises[id] = j.dados; if (j.documentos?.length) (M.docsLic[id] = M.docsLic[id] || {}).itens = j.documentos;
   } catch (err) {
-    S.erroAnalise[id] = err.name === "AbortError" ? "A análise demorou demais. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão (no claude.ai essa chamada fica bloqueada)." : err.message;
-  } finally { clearTimeout(t); delete S.analisando[id]; if (S.aberta === id) gaveta(id); render(); }
+    M.erroAnalise[id] = err.name === "AbortError" ? "A análise demorou demais. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão (no claude.ai essa chamada fica bloqueada)." : err.message;
+  } finally { clearTimeout(t); delete M.analisando[id]; if (aqui()) gaveta(id); render(); }
 }
 async function testarToken() {
   S.msgTok = "Testando…"; render();
@@ -818,26 +828,25 @@ async function testarToken() {
 const tamanho = b => !b ? "" : b >= 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
 async function carregarDocs(id, guardar) {
   const o = S.ops.find(x => x.id === id); if (!o) return;
-  const d = (S.docsLic[id] = S.docsLic[id] || {});
+  const emp0 = S.empId, M = mapasDe(emp0), d = (M.docsLic[id] = M.docsLic[id] || {}), aqui = () => S.empId === emp0 && S.aberta === id;
   if (d.carregando) return;
-  d.carregando = true; d.erro = null; if (S.aberta === id) atualizarDocs(id);
+  d.carregando = true; d.erro = null; if (aqui()) atualizarDocs(id);
   const listaPncp = async () => {   // plano B: lista direta do PNCP (o navegador pode baixar de lá)
     const r = await fetch(o.arquivos_api, {headers:{Accept:"application/json"}}); if (!r.ok) throw new Error("O PNCP respondeu HTTP " + r.status);
     return (await r.json()).filter(a => a.url).map(a => ({titulo:a.titulo, tipo:a.tipoDocumentoNome, origem:a.url, direto:true}));
   };
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/documentos?select=itens&id=eq.${encodeURIComponent(id)}`, {headers:{apikey:SB_KEY, "Accept-Profile":"licitacoes"}});
-    const j = r.ok ? await r.json() : [];
+    const j = S.user && SB ? (await SB.from("documentos").select("itens").eq("empresa_id", emp0).eq("id", id)).data || [] : [];
     if (j[0]?.itens?.length) d.itens = j[0].itens;
-    else if (guardar && lerToken()) {
-      const rr = await chamarAnalista({id, arquivos_api:o.arquivos_api, acao:"documentos"}), jj = await rr.json().catch(() => ({}));
+    else if (guardar && S.user && lerToken()) {
+      const rr = await chamarAnalista({id, empresa_id:emp0, arquivos_api:o.arquivos_api, acao:"documentos"}), jj = await rr.json().catch(() => ({}));
       if (!rr.ok) throw new Error(jj.erro || "O servidor respondeu HTTP " + rr.status);
       d.itens = jj.documentos;
     } else d.itens = await listaPncp();
   } catch (err) {
     try { d.itens = await listaPncp(); d.aviso = "Não consegui guardar uma cópia (" + (err.message || err) + "). Os links abaixo vêm direto do PNCP."; }
     catch (e2) { d.erro = "Não consegui buscar os documentos. Abra o edital pelo PNCP."; }
-  } finally { d.carregando = false; if (S.aberta === id) atualizarDocs(id); }
+  } finally { d.carregando = false; if (aqui()) atualizarDocs(id); }
 }
 
 
@@ -896,7 +905,7 @@ S.user = null; S.modoLocal = false; S.auth = "carregando"; S.nuvem = ""; S.login
 function normEmpresa(e) { e.ufs = e.ufs || []; e.mods = e.mods || [6, 8]; e.dias = e.dias || 45; e.cnaes = e.cnaes || []; e.areas = e.areas || []; e.evitar = e.evitar || []; e.palavras = e.palavras || []; e.docs = e.docs || []; return e; }
 const dadosDe = e => { const {id, ...d} = e; return d; };
 const estadoDe = id => ({col:S.col[id] || {}, obs:S.obs[id] || {}});
-const limparMemoria = () => { Object.values(S.fzs).forEach(f => { f.parar = true; }); S.fzs = {}; S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.docsLic = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
+const limparMemoria = () => { Object.values(S.fzs).forEach(f => { f.parar = true; }); S.fzs = {}; S.empresas = []; S.empId = null; S.col = {}; S.obs = {}; S.res = {}; S.ops = []; S.porEmp = {}; S.areaSel = null; S.uf = ""; S.aberta = null; _sync.ult = {}; _sync.busca.clear(); _sync.apagar.clear(); _memo.k = ""; };
 
 function msgAuth(err) {
   const m = String(err && err.message || err);

@@ -95,14 +95,14 @@ const limpar = (n: string) => n.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 // Guarda uma cópia de cada arquivo da licitação no armazenamento (bucket público "editais") e devolve a lista para a tela.
 // É idempotente: se a licitação já foi guardada, devolve a lista que está no banco.
 // deno-lint-ignore no-explicit-any
-async function salvarDocumentos(db: any, id: string, arquivosApi: string): Promise<Record<string, unknown>[]> {
-  const { data: ex } = await db.from("documentos").select("itens").eq("id", id).maybeSingle();
+async function salvarDocumentos(db: any, empresa: string, id: string, arquivosApi: string): Promise<Record<string, unknown>[]> {
+  const { data: ex } = await db.from("documentos").select("itens").eq("empresa_id", empresa).eq("id", id).maybeSingle();
   if (ex?.itens?.length) return ex.itens;
   const r = await fetch(arquivosApi, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Erro(502, `O PNCP não listou os arquivos (HTTP ${r.status}).`);
   const arqs: Arquivo[] = (await r.json()).filter((a: Arquivo) => a.url);
   if (!arqs.length) throw new Erro(404, "Esta licitação não tem arquivos no PNCP.");
-  const base = Deno.env.get("SUPABASE_URL")!, pasta = id.replace("/", "_");
+  const base = Deno.env.get("SUPABASE_URL")!, pasta = `${empresa}/${id.replace("/", "_")}`;   // cada empresa tem a sua pasta de cópias
   const itens: Record<string, unknown>[] = []; let total = 0;
   for (const [i, a] of arqs.slice(0, 15).entries()) {
     try {
@@ -119,7 +119,7 @@ async function salvarDocumentos(db: any, id: string, arquivosApi: string): Promi
       itens.push({ titulo: a.titulo ?? "arquivo", tipo: a.tipoDocumentoNome ?? "", erro: err instanceof Error ? err.message : String(err), origem: a.url });
     }
   }
-  if (itens.some((x) => x.url)) await db.from("documentos").upsert({ id, itens, atualizado_em: new Date().toISOString() }, { onConflict: "id" });
+  if (itens.some((x) => x.url)) await db.from("documentos").upsert({ empresa_id: empresa, id, itens, atualizado_em: new Date().toISOString() }, { onConflict: "empresa_id,id" });
   return itens;
 }
 
@@ -211,15 +211,22 @@ Deno.serve(async (req) => {
   try {
     if (!Deno.env.get("ANALISTA_TOKEN")) throw new Erro(503, "O código de acesso do Analista ainda não foi configurado no servidor (ANALISTA_TOKEN).");
     if (!tokenOk(req.headers.get("x-analista-token"))) throw new Erro(401, "Código de acesso do Analista incorreto.");
-    const { id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = await req.json();
+    const { id, empresa_id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = await req.json();
     if (!/^\d{14}-\d-\d{6}\/\d{4}$/.test(id ?? "")) throw new Erro(400, "Identificador da licitação inválido.");
     if (!/^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(arquivos_api ?? "")) throw new Erro(400, "Endereço dos arquivos inválido.");
 
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(empresa_id ?? "")) throw new Erro(400, "Empresa não informada.");
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { db: { schema: "licitacoes" } });
-    if (acao === "documentos") return json({ documentos: await salvarDocumentos(db, id, arquivos_api) });
+    // Tudo é por empresa: quem chama precisa estar logado e ser o dono da empresa informada.
+    const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    const { data: u } = await db.auth.getUser(jwt);
+    if (!u?.user) throw new Erro(401, "Entre na sua conta para usar o Analista.");
+    const { data: dona } = await db.from("empresas").select("id").eq("id", empresa_id).eq("user_id", u.user.id).maybeSingle();
+    if (!dona) throw new Erro(403, "Esta empresa não é da sua conta.");
+    if (acao === "documentos") return json({ documentos: await salvarDocumentos(db, empresa_id, id, arquivos_api) });
     if (!forcar && !dry) {
-      const { data } = await db.from("analises").select("dados").eq("id", id).maybeSingle();
-      if (data) return json({ dados: data.dados, cache: true, documentos: await salvarDocumentos(db, id, arquivos_api).catch(() => []) });
+      const { data } = await db.from("analises").select("dados").eq("empresa_id", empresa_id).eq("id", id).maybeSingle();
+      if (data) return json({ dados: data.dados, cache: true, documentos: await salvarDocumentos(db, empresa_id, id, arquivos_api).catch(() => []) });
     }
     const limite = Number(Deno.env.get("ANALISTA_LIMITE_DIA") ?? 40);
     const { count } = await db.from("analises").select("id", { count: "exact", head: true }).like("origem", "analista%").gte("gerada_em", new Date(Date.now() - 864e5).toISOString());
@@ -229,7 +236,7 @@ Deno.serve(async (req) => {
     const conteudo = await prepararConteudo(arq.bytes, arq.nome);
     if (dry) return json({ ok: true, arquivo: conteudo.arquivo, tipo: conteudo.tipo, bytes: conteudo.bytes, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas });
 
-    const documentos = await salvarDocumentos(db, id, arquivos_api).catch(() => []);
+    const documentos = await salvarDocumentos(db, empresa_id, id, arquivos_api).catch(() => []);
     const analise = await chamarClaude(conteudo, opp);
     const dados = { ...analise, id, edital: conteudo.arquivo, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas,
       gerado_por: `Analista (${MODELO}) leu ${conteudo.paginasLidas ? conteudo.paginasLidas + " páginas de " : ""}${conteudo.arquivo}.` };
@@ -238,7 +245,7 @@ Deno.serve(async (req) => {
       valor_estimado: opp.valor_estimado ?? null, modalidade: opp.modalidade ?? null, encerramento_proposta: opp.encerramento_proposta ?? null,
       link_origem: opp.link_origem ?? null, arquivos_api, numero_compra: opp.numero_compra ?? null, ano: opp.ano ?? null, processo: opp.processo ?? null,
     }, { onConflict: "id", ignoreDuplicates: true });
-    const { error } = await db.from("analises").upsert({ id, dados, modelo: MODELO, origem: "analista-edge" }, { onConflict: "id" });
+    const { error } = await db.from("analises").upsert({ empresa_id, id, dados, modelo: MODELO, origem: "analista-edge" }, { onConflict: "empresa_id,id" });
     if (error) throw new Erro(500, "A análise ficou pronta, mas não foi possível guardá-la: " + error.message);
     return json({ dados, cache: false, documentos });
   } catch (e) {
