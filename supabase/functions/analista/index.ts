@@ -35,6 +35,12 @@ const SCHEMA = {
       pagina: { type: ["integer", "null"] }, trecho: { type: "string" } } } },
     penalidades: { type: "array", items: { type: "object", required: ["descricao", "trecho"], properties: {
       descricao: { type: "string" }, pagina: { type: ["integer", "null"] }, trecho: { type: "string" } } } },
+    local_entrega_execucao: { type: "string", description: "Onde o objeto deve ser entregue ou o serviço executado (endereço, cidade, unidades). Vazio se o edital não diz." },
+    prazo_entrega_execucao: { type: "string", description: "Prazo para entregar ou iniciar/concluir a execução, como no edital (ex.: 15 dias corridos após a ordem de fornecimento)." },
+    vigencia_contrato: { type: "string", description: "Vigência do contrato ou da ata de registro de preços e possibilidade de prorrogação." },
+    forma_pagamento: { type: "string", description: "Prazo e condições de pagamento (ex.: 30 dias após o aceite da nota fiscal)." },
+    garantias: { type: "string", description: "Garantia de proposta, garantia contratual (percentual) e garantia técnica exigida do produto/serviço." },
+    visita_amostras: { type: "string", description: "Se exige visita técnica, amostras, prova de conceito ou demonstração, e os prazos para isso." },
     tratamento_me_epp: { type: "string", description: "O que o edital diz sobre ME/EPP (exclusividade, preferência, prazos para regularização)." },
     lacunas: { type: "array", items: { type: "string" }, description: "O que não deu para confirmar (partes não lidas, anexos ausentes, informações ambíguas)." },
   },
@@ -46,6 +52,7 @@ Regras:
 - Use só o que está no documento. Não invente nada. O que não estiver claro vai em "lacunas".
 - Cada item de prazos, habilitacao, riscos e penalidades traz um "trecho" copiado literalmente (curto) e a "pagina" do PDF onde ele está. Se o documento não tem páginas, use null.
 - Datas e valores exatamente como no edital.
+- Preencha local_entrega_execucao, prazo_entrega_execucao, vigencia_contrato, forma_pagamento, garantias e visita_amostras com o que o edital diz; se não disser, deixe a string vazia (não invente).
 - Em "riscos", aponte o que pode dar prejuízo ou desclassificação: garantias, amostras, atestados difíceis, prazos curtos de entrega, multas altas, exigências de fabricante, local de entrega distante.
 - A recomendação é para uma pequena empresa fornecedora do tipo de objeto licitado. Seja prudente: prefira "participar_com_ressalvas" a "participar" quando houver risco relevante.
 - Escreva em português do Brasil, claro e direto.`;

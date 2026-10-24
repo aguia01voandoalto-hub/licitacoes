@@ -799,14 +799,14 @@ const chamarAnalista = async (corpo, sinal) => {   // a chamada vai com a sessã
   let jwt = SB_KEY; try { jwt = (await SB.auth.getSession()).data.session?.access_token || SB_KEY; } catch(e) {}
   return fetch(FN_ANALISTA, {method:"POST", signal:sinal, headers:{"content-type":"application/json", apikey:SB_KEY, Authorization:"Bearer " + jwt, "x-analista-token":lerToken()}, body:JSON.stringify(corpo)});
 };
-async function analisarEdital(id) {
+async function analisarEdital(id, forcar) {
   const o = S.ops.find(x => x.id === id); if (!o) return;
   const emp0 = S.empId, M = mapasDe(emp0), aqui = () => S.empId === emp0 && S.aberta === id;   // o resultado volta para a empresa que pediu, mesmo se você trocar de empresa
   if (!S.user) { M.erroAnalise[id] = "Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa."; return render(); }
   M.analisando[id] = true; delete M.erroAnalise[id]; if (aqui()) gaveta(id);
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 240000);
   try {
-    const r = await chamarAnalista({id, empresa_id:emp0, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
+    const r = await chamarAnalista({id, forcar:!!forcar, empresa_id:emp0, arquivos_api:o.arquivos_api, opp:{orgao:o.orgao, uf:o.uf, municipio:o.municipio, objeto:o.objeto, valor_estimado:o.valor_estimado, modalidade:o.modalidade, encerramento_proposta:o.encerramento_proposta, link_origem:o.link_origem, numero_compra:o.numero_compra, ano:o.ano, processo:o.processo}}, ctl.signal);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
     M.analises[id] = j.dados; if (j.documentos?.length) (M.docsLic[id] = M.docsLic[id] || {}).itens = j.documentos;
@@ -1233,14 +1233,15 @@ function gaveta(id, manter) {
       ${a.penalidades?.length ? `<div><b>Multas e penalidades</b></div>` + a.penalidades.map(r => `<div class="item">${esc(r.descricao)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
       ${a.prazos?.length ? `<div><b>Prazos</b></div>` + a.prazos.map(r => `<div class="item"><b>${esc(r.descricao)}:</b> ${esc(r.data)}<span class="cit">${r.pagina ? "p. " + esc(r.pagina) + " — " : ""}“${esc(r.trecho)}”</span></div>`).join("") : ""}
       ${a.tratamento_me_epp ? `<div class="item"><b>ME/EPP:</b> ${esc(a.tratamento_me_epp)}</div>` : ""}
-      ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
+      ${a.local_entrega_execucao || a.prazo_entrega_execucao || a.vigencia_contrato || a.forma_pagamento || a.garantias || a.visita_amostras ? `<div><b>Condições do edital</b></div>${[["Local de entrega/execução", a.local_entrega_execucao], ["Prazo de entrega/execução", a.prazo_entrega_execucao], ["Vigência", a.vigencia_contrato], ["Pagamento", a.forma_pagamento], ["Garantias", a.garantias], ["Visita, amostras ou demonstração", a.visita_amostras]].filter(x => x[1]).map(([k, v]) => `<div class="item"><b>${k}:</b> ${esc(v)}</div>`).join("")}` : ""}
+      ${a.lacunas?.length ? `<div><b>O que o Analista não conseguiu confirmar</b></div><ul class="lacuna">${a.lacunas.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${S.analisando[id] ? '<div class="aviso info" role="status">O Analista está lendo o edital de novo…</div>' : lerToken() ? `<div><button class="btn2" type="button" data-reanalisar="${esc(id)}">Reanalisar o edital (refaz a leitura e gasta uma análise)</button></div>` : ""}</div>`;
   } else {
     const run = S.analisando[id], er = S.erroAnalise[id], tok = lerToken();
     R += `<div class="bloco">${run ? '<div class="aviso info" role="status">O Analista está baixando e lendo o edital. Leva de 30 a 90 segundos…</div>' : "<div>Esta oportunidade ainda não foi analisada. O Analista baixa o edital no PNCP, lê e aponta prazos, exigências, riscos e multas, citando a página de cada trecho.</div>"}
       ${er ? `<div class="aviso">${esc(er)}</div>` : ""}
       ${run ? "" : tok ? `<div><button class="btn2 prim" type="button" data-analisar="${esc(id)}">Analisar este edital</button></div>` : '<div class="aviso">Para usar o Analista, informe o código de acesso na tela Empresa (Configuração do Analista).</div><div><button class="btn2" type="button" data-view="empresa">Abrir a configuração do Analista</button></div>'}</div>`;
   }
-  R += `</section><section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
+  R += `</section>${blocoEmail(id)}<section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
     hab.map(x => { const [st, msg] = habilitacaoStatus(x.grupo); return `<div class="item"><span class="${st}">${st==="ok"?"✓":"!"}</span> <b>${esc(GRUPOS[x.grupo]||x.grupo)}:</b> ${esc(x.exigencia)}<span class="cit" style="display:block">${esc(msg)}${x.pagina ? " · edital p. " + esc(x.pagina) : ""}</span></div>`; }).join("") +
     `<div><button class="btn2" type="button" data-view="documentos">Abrir o cofre de documentos</button></div></div></section>
     <section><h3>Redator · rascunhos</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
@@ -1251,6 +1252,88 @@ function gaveta(id, manter) {
     <div class="det-grid"><div class="det-l">${L}</div><div class="det-r">${R}</div></div></div>`;
   $("#veu").hidden = true; $("#gaveta").hidden = false; document.body.classList.add("sem-rolagem");
   $("#gaveta").scrollTop = rolagem; if (!manter) $("#gaveta").focus();
+}
+
+/* ============ E-MAIL PARA O RESPONSÁVEL DECIDIR ============ */
+// Junta o que é fato (PNCP: órgão, datas, itens com quantidade e valor) com o que o Analista leu do edital e com a situação do cofre.
+const _compraCache = {};
+const dtHora = z => z ? new Date(z).toLocaleString("pt-BR", {dateStyle:"short", timeStyle:"short", timeZone:"America/Sao_Paulo"}) : "—";
+const dtDia = z => z ? new Date(z).toLocaleDateString("pt-BR", {timeZone:"America/Sao_Paulo"}) : "—";
+const unico = (q, n) => q == null ? "—" : Number(q).toLocaleString("pt-BR", {maximumFractionDigits: n ?? 4}).replace(/,00$/, "");
+async function dadosCompra(o) {
+  const m = String(o.arquivos_api || "").match(/orgaos\/(\d{14})\/compras\/(\d{4})\/(\d+)\/arquivos$/); if (!m) throw new Error("Não consegui identificar a compra no PNCP.");
+  if (_compraCache[o.id]) return _compraCache[o.id];
+  const [, cnpj, ano, seq] = m, base = `https://pncp.gov.br/api/consulta/v1/orgaos/${cnpj}/compras/${ano}/${seq}`;
+  const r = await fetch(base, {headers:{Accept:"application/json"}}); if (!r.ok) throw new Error("O PNCP respondeu HTTP " + r.status + " ao buscar a compra.");
+  const compra = await r.json(), itens = []; let total = 0;
+  for (let pg = 1; pg <= 6; pg++) {   // até 300 itens
+    const ri = await fetch(`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${seq}/itens?pagina=${pg}&tamanhoPagina=50`, {headers:{Accept:"application/json"}});
+    if (!ri.ok) break; const lote = await ri.json(); if (!Array.isArray(lote) || !lote.length) break;
+    itens.push(...lote); if (lote.length < 50) break;
+  }
+  return (_compraCache[o.id] = {compra, itens, cnpj, ano, seq});
+}
+const corta = (t, n) => { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t; };
+function montarEmail(o, a, e, dc) {
+  const c = dc.compra, it = dc.itens, uo = c.unidadeOrgao || {}, nl = "\n";
+  const recRot = {participar:"PARTICIPAR", participar_com_ressalvas:"PARTICIPAR COM RESSALVAS", nao_participar:"NÃO PARTICIPAR"};
+  const enc = c.dataEncerramentoProposta ? new Date(c.dataEncerramentoProposta + "-03:00") : (o.encerramento_proposta ? new Date(o.encerramento_proposta) : null);
+  let limite = enc ? new Date(enc.getTime() - 2 * 864e5) : null; if (limite && limite < new Date()) limite = new Date();
+  const orgao = c.orgaoEntidade?.razaoSocial || o.orgao || "Órgão", numero = `${c.numeroCompra || o.numero_compra || "s/n"}/${c.anoCompra || o.ano || ""}`;
+  const assunto = `Decisão até ${limite ? dtDia(limite) : "o quanto antes"}: ${corta(orgao, 50)} · ${c.modalidadeNome || o.modalidade || "licitação"} ${numero} · propostas até ${enc ? dtDia(enc) : "—"}`;
+  const L = [];
+  L.push(`Olá${e.resp_nome ? ", " + e.resp_nome.split(" ")[0] : ""},`, "", `Encontramos uma licitação que combina com ${e.fantasia || e.razao || "a empresa"} e precisamos da sua decisão: participamos ou não?`);
+  L.push("", `RESPONDA ATÉ: ${limite ? dtDia(limite) : "o quanto antes"}  (as propostas encerram em ${dtHora(enc)})`, "Basta responder este e-mail com: SIM, NÃO ou SIM COM AJUSTES (diga quais).");
+  if (a) L.push("", `RECOMENDAÇÃO DO ANALISTA: ${recRot[a.recomendacao] || a.recomendacao}`, a.motivo_recomendacao || "");
+  else L.push("", "RECOMENDAÇÃO: ainda não temos a análise do edital. As informações abaixo vêm do cadastro da compra no PNCP.");
+  L.push("", "1) A LICITAÇÃO", "-".repeat(40));
+  L.push(`Órgão: ${orgao}${uo.nomeUnidade ? " · " + uo.nomeUnidade : ""}`, `Modalidade: ${c.modalidadeNome || o.modalidade || "—"} · Critério/disputa: ${c.modoDisputaNome || "—"}${c.srp ? " · Registro de preços" : ""}`,
+    `Número: ${numero}${c.processo ? " · Processo " + c.processo : ""}`, `Objeto: ${corta(c.objetoCompra || o.objeto, 700)}`,
+    `Local (cidade do órgão): ${[uo.municipioNome, uo.ufSigla].filter(Boolean).join("/") || [o.municipio, o.uf].filter(Boolean).join("/") || "—"}${a?.local_entrega_execucao ? nl + "Local de entrega/execução (edital): " + a.local_entrega_execucao : ""}`,
+    `Propostas: abrem em ${dtHora(c.dataAberturaProposta ? new Date(c.dataAberturaProposta + "-03:00") : null)} e encerram em ${dtHora(enc)}`,
+    `Valor total estimado: ${c.orcamentoSigilosoCodigo && c.orcamentoSigilosoCodigo !== 1 ? "sigiloso" : brl(c.valorTotalEstimado || o.valor_estimado)}${a?.valor_estimado_edital ? " (no edital: " + brl(a.valor_estimado_edital) + ")" : ""}`);
+  L.push("", `2) ITENS (${it.length || "nenhum informado no PNCP"})`, "-".repeat(40));
+  if (it.length) {
+    const sig = it.some(x => x.orcamentoSigiloso);
+    it.slice(0, 25).forEach(x => L.push(`${String(x.numeroItem).padStart(2, "0")}. ${corta(x.descricao, 160)}${nl}     Qtd: ${unico(x.quantidade)} ${x.unidadeMedida || ""} · Unitário: ${x.orcamentoSigiloso ? "sigiloso" : brl(x.valorUnitarioEstimado)} · Total: ${x.orcamentoSigiloso ? "sigiloso" : brl(x.valorTotal)}`));
+    if (it.length > 25) L.push(`… e mais ${it.length - 25} itens (lista completa no edital/PNCP).`);
+    const soma = it.reduce((s, x) => s + (Number(x.valorTotal) || 0), 0);
+    if (!sig && soma) L.push(`Soma dos itens: ${brl(soma)}`);
+  } else L.push("O órgão não detalhou itens no PNCP; veja o termo de referência no edital.");
+  const cond = [["Local de entrega/execução", a?.local_entrega_execucao], ["Prazo de entrega/execução", a?.prazo_entrega_execucao], ["Vigência do contrato", a?.vigencia_contrato], ["Pagamento", a?.forma_pagamento],
+    ["Garantias", a?.garantias], ["Visita técnica, amostras ou demonstração", a?.visita_amostras], ["ME/EPP", a?.tratamento_me_epp]].filter(x => x[1]);
+  if (a) { L.push("", "3) CONDIÇÕES DO EDITAL", "-".repeat(40)); if (cond.length) cond.forEach(([k, v]) => L.push(`${k}: ${v}`)); else L.push("Esta análise foi feita antes dos novos campos. Clique em “Reanalisar” para trazer local, prazo de entrega, pagamento e garantias."); }
+  if (a?.prazos?.length) { L.push("", "Prazos do edital:"); a.prazos.slice(0, 8).forEach(p => L.push(`• ${p.descricao}: ${p.data}${p.pagina ? " (edital p. " + p.pagina + ")" : ""}`)); }
+  const hab = a ? a.habilitacao : DOCS_PADRAO.map(([t, g]) => ({grupo:g, exigencia:t}));
+  L.push("", `${a ? "4" : "3"}) DOCUMENTOS DE HABILITAÇÃO E SITUAÇÃO DA EMPRESA`, "-".repeat(40));
+  hab.slice(0, 18).forEach(x => { const [st, msg] = habilitacaoStatus(x.grupo); L.push(`${st === "ok" ? "[OK]   " : "[ATENÇÃO]"} ${x.exigencia}${a && x.pagina ? " (p. " + x.pagina + ")" : ""} — ${msg}`); });
+  if (a?.riscos?.length) { L.push("", "5) RISCOS", "-".repeat(40)); [...a.riscos].sort((x, y) => ({alta:0, media:1, baixa:2}[x.gravidade] - {alta:0, media:1, baixa:2}[y.gravidade])).slice(0, 8).forEach(r => L.push(`• [${String(r.gravidade).toUpperCase()}] ${r.descricao}${r.pagina ? " (p. " + r.pagina + ")" : ""}`)); }
+  if (a?.penalidades?.length) { L.push("", "Multas e penalidades:"); a.penalidades.slice(0, 6).forEach(r => L.push(`• ${r.descricao}${r.pagina ? " (p. " + r.pagina + ")" : ""}`)); }
+  if (a?.lacunas?.length) { L.push("", "O QUE NÃO FOI POSSÍVEL CONFIRMAR (vale conferir no edital):"); a.lacunas.slice(0, 6).forEach(x => L.push("• " + x)); }
+  L.push("", "SE A RESPOSTA FOR SIM, OS PRÓXIMOS PASSOS SÃO:", "• Regularizar os documentos marcados com [ATENÇÃO].", "• Preparar as declarações obrigatórias e a proposta de preços (precisamos do seu valor-alvo e margem).", "• Conferir cadastro/credenciamento na plataforma do órgão antes do prazo.");
+  L.push("", "LINKS", `PNCP: https://pncp.gov.br/app/editais/${dc.cnpj}/${dc.ano}/${dc.seq}`); if (c.linkSistemaOrigem || o.link_origem) L.push(`Sistema de origem: ${c.linkSistemaOrigem || o.link_origem}`);
+  L.push("", "—", `Preparado pelo Time de Licitações${a ? " (análise automática de apoio: confirme os pontos críticos no edital)" : ""}.`);
+  return {assunto, corpo: L.join(nl), para: e.resp_email || ""};
+}
+async function prepararEmail(id) {
+  const emp0 = S.empId, M = mapasDe(emp0); M.emails = M.emails || {};
+  const o = S.ops.find(x => x.id === id), e = emp(); if (!o || !e) return;
+  M.emails[id] = {carregando:true}; gaveta(id, true);
+  try { M.emails[id] = montarEmail(o, M.analises[id], e, await dadosCompra(o)); }
+  catch (err) { M.emails[id] = {erro:(err instanceof TypeError ? "Não consegui falar com o PNCP. Confira a conexão." : err.message)}; }
+  if (S.empId === emp0 && S.aberta === id) gaveta(id, true);
+}
+function blocoEmail(id) {
+  const m = (mapasDe(S.empId).emails || {})[id], e = emp();
+  if (!m) return `<section><h3>E-mail para o responsável decidir</h3><div class="bloco"><div>O Analista monta o e-mail com o que o responsável precisa para dizer sim ou não: objeto, itens com quantidade e valores, local, prazos, documentos, riscos e a data limite da resposta.</div>${e && !e.resp_email ? '<div class="aviso">Cadastre o e-mail do responsável pela decisão na tela Empresa (Dados da empresa). Sem ele, você preenche o destinatário aqui.</div>' : ""}<div><button class="btn2 prim" type="button" data-email-gerar="${esc(id)}">Preparar e-mail</button></div></div></section>`;
+  if (m.carregando) return `<section><h3>E-mail para o responsável decidir</h3><div class="bloco"><div class="aviso info" role="status">Buscando itens e dados da compra no PNCP…</div></div></section>`;
+  if (m.erro) return `<section><h3>E-mail para o responsável decidir</h3><div class="bloco"><div class="aviso">${esc(m.erro)}</div><div><button class="btn2" type="button" data-email-gerar="${esc(id)}">Tentar de novo</button></div></div></section>`;
+  return `<section><h3>E-mail para o responsável decidir</h3><div class="bloco">
+    <label class="fonte" style="margin:0">Para<input class="em-in" data-email-campo="para" data-email-id="${esc(id)}" value="${esc(m.para)}" placeholder="email@empresa.com" inputmode="email"></label>
+    <label class="fonte" style="margin:0">Assunto<input class="em-in" data-email-campo="assunto" data-email-id="${esc(id)}" value="${esc(m.assunto)}"></label>
+    <textarea class="obs" rows="18" data-email-campo="corpo" data-email-id="${esc(id)}" aria-label="Texto do e-mail" style="font-family:ui-monospace,monospace;font-size:12px">${esc(m.corpo)}</textarea>
+    <div class="acoes"><button class="btn2 prim" type="button" data-email-abrir="${esc(id)}">Abrir no meu e-mail</button><button class="btn2" type="button" data-email-copiar="${esc(id)}">Copiar tudo</button><button class="btn2" type="button" data-email-gerar="${esc(id)}">Refazer</button></div>
+    <div class="fonte" id="em-st">Você pode editar o texto antes de enviar. Ele não é enviado sozinho: abre no seu programa de e-mail ou você copia e cola.</div></div></section>`;
 }
 
 
@@ -1476,7 +1559,7 @@ function viewEmpresa() {
   if (!e) return blocoLocais() + lista + imp + cfgAnalista();
   const f = (k, t, cls = "") => `<label class="${cls}">${t}<input id="e_${k}" data-emp="${e.id}" value="${esc(e[k] || "")}"></label>`;
   const dados = `<section class="painel"><h2>Dados da empresa</h2><div class="form">${f("razao","Razão social","l")}${f("fantasia","Nome fantasia")}${f("cnpj","CNPJ")}<label>Porte<select id="e_porte">${["","ME","EPP","Demais"].map(p => `<option ${e.porte === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
-    ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}</div><p class="fonte" style="margin:10px 0 0">As alterações são salvas automaticamente neste navegador.</p></section>`;
+    ${f("end","Endereço da sede","l")}${f("rep","Representante legal")}${f("cargo","Cargo")}${f("cpf","CPF do representante")}${f("resp_nome","Responsável pela decisão (nome)")}${f("resp_email","E-mail do responsável pela decisão")}</div><p class="fonte" style="margin:10px 0 0">As alterações são salvas automaticamente neste navegador.</p></section>`;
   const cn = `<section class="painel"><h2>Atividades econômicas (CNAE)</h2>
     ${e.cnaes.map((c,i) => `<div class="lin"><span class="tag">${esc(fmtCnae(c.codigo))}</span><span class="o" style="white-space:normal">${esc(c.desc || "")}${c.principal ? ' <span class="pill">principal</span>' : ""}</span><button class="acao" type="button" data-rem-cnae="${i}" style="flex:none">Remover</button></div>`).join("") || '<div class="vazio">Nenhum CNAE. Importe o cartão CNPJ ou adicione abaixo.</div>'}
     <div class="form" style="grid-template-columns:1fr auto;align-items:end;margin-top:12px"><label>Adicionar CNAE<input id="novo_cnae" placeholder="Ex.: 4751-2/01" inputmode="numeric"></label><button class="btn2" type="button" data-add-cnae>Adicionar</button></div>
@@ -1527,7 +1610,7 @@ const escolherEmpresa = id => { S.empId = id; resetarContexto(); recomporOps(); 
 /* ============ EVENTOS ============ */
 function lerForm() {   // só lê o formulário se ele está visível e é da empresa ativa (evita gravar dados de uma tela antiga)
   const e = emp(), r = $("#e_razao"); if (!e || !r || $("#v-empresa").hidden || r.dataset.emp !== e.id) return;
-  for (const k of ["razao","fantasia","cnpj","end","rep","cargo","cpf","porte"]) { const el = $("#e_" + k); if (el) e[k] = el.value.trim(); }
+  for (const k of ["razao","fantasia","cnpj","end","rep","cargo","cpf","resp_nome","resp_email","porte"]) { const el = $("#e_" + k); if (el) e[k] = el.value.trim(); }
 }
 function aoClicar(ev) {
   const t = ev.target.closest("button,[data-abrir],[data-ir],a,summary"); if (!t) return;
@@ -1557,6 +1640,7 @@ function aoClicar(ev) {
   if ("fzIniciar" in D) return iniciarFarejador();
   if ("fzPalavras" in D) return iniciarFarejador("palavras");
   if (D.analisar) return analisarEdital(D.analisar);
+  if (D.reanalisar) return analisarEdital(D.reanalisar, true);
   if ("salvarToken" in D) { gravarToken($("#tok_analista").value.trim()); S.msgTok = "Código salvo neste navegador."; return render(); }
   if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
   if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
@@ -1589,6 +1673,15 @@ function aoClicar(ev) {
   if (D.palavraDel !== undefined && t.hasAttribute("data-palavra-del")) { (e.palavras = e.palavras || []).splice(+D.palavraDel, 1); return mudouTermos(); }
   if ("evitarAdd" in D) return addEvitar();
   if (D.evitarDel !== undefined && t.hasAttribute("data-evitar-del")) { e.evitar.splice(+D.evitarDel, 1); return mudouTermos(); }
+  if (D.emailGerar) { prepararEmail(D.emailGerar); return; }
+  if (D.emailCopiar || D.emailAbrir) {
+    const id = D.emailCopiar || D.emailAbrir, m = (mapasDe(S.empId).emails || {})[id]; if (!m || !m.corpo) return;
+    const completo = `Assunto: ${m.assunto}\n\n${m.corpo}`, st = $("#em-st");
+    const copiar = () => (navigator.clipboard?.writeText(completo) || Promise.reject()).then(() => { st && (st.textContent = "Texto completo copiado."); return true; }, () => { st && (st.textContent = "Não consegui copiar sozinho: selecione o texto e copie."); return false; });
+    if (D.emailCopiar) { copiar(); return; }
+    copiar().then(ok => { const curto = m.corpo.slice(0, 1200) + (m.corpo.length > 1200 ? "\n\n[Texto completo copiado: cole aqui para ver os itens e o restante.]" : ""); location.href = `mailto:${encodeURIComponent(m.para || "")}?subject=${encodeURIComponent(m.assunto)}&body=${encodeURIComponent(curto)}`; if (st && ok) st.textContent = "Abrindo seu e-mail. O texto completo também foi copiado, caso o programa corte o final."; });
+    return;
+  }
   if (D.copiar) { const txt = $("#"+D.copiar).textContent; (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => t.textContent = "Copiado", () => { const r = document.createRange(); r.selectNodeContents($("#"+D.copiar)); getSelection().removeAllRanges(); getSelection().addRange(r); t.textContent = "Selecionado: use Ctrl+C"; }); return; }
 }
 function addTermo(i) {
@@ -1610,7 +1703,8 @@ function addEvitar() {
 document.addEventListener("click", aoClicar);
 let _tObs = 0;
 document.addEventListener("input", ev => {   // observações da licitação: salva sozinho
-  const t = ev.target; if (!t.dataset || t.dataset.obs === undefined) return;
+  const t = ev.target; if (t.dataset && t.dataset.emailCampo) { const m = (mapasDe(S.empId).emails || {})[t.dataset.emailId]; if (m) m[t.dataset.emailCampo] = t.value; return; }
+  if (!t.dataset || t.dataset.obs === undefined) return;
   setObs(t.dataset.obs, t.value); clearTimeout(_tObs);
   $("#obs-st") && ($("#obs-st").textContent = "Salvando…");
   _tObs = setTimeout(() => { salvar(); $("#obs-st") && ($("#obs-st").textContent = "Salvo neste navegador."); renderNav(metricas()); }, 500);
