@@ -268,6 +268,20 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 .pill.fase.a_receber{background:var(--accent-soft);color:var(--accent-text)}
 .sep{flex:0 0 1px;align-self:stretch;background:var(--line);margin:0 4px}
 
+/* busca por palavra-chave */
+.kwbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+.kw-row{display:flex;gap:8px;flex-wrap:wrap}
+.kw-row input{flex:1 1 260px;min-width:0;font:15px var(--f-body);color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:11px 12px}
+.kwbox .eb-k{margin-bottom:8px}
+.kw-h{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;margin:12px 0 6px}
+.kw-h span{color:var(--muted);font-size:12.5px;flex:1 1 280px}
+.kwr{display:flex;gap:12px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:10px 0}
+.kwr-t{display:grid;gap:4px;min-width:0}
+.kwr .obj{font-weight:500;font-size:13.5px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kwr-a{display:flex;gap:6px;flex:none;align-items:center}
+.btn2[disabled]{opacity:.5;cursor:not-allowed}
+@media (max-width:640px){.kwr{flex-direction:column;align-items:stretch}.kwr-a{justify-content:flex-start}}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -282,6 +296,10 @@ a.acao,a.btn2{text-decoration:none;display:inline-block}
 
 <section class="view" id="v-oportunidades" hidden>
   <div id="empbar2"></div>
+  <section class="kwbox"><span class="eb-k">Buscar por palavra-chave no PNCP</span>
+    <div class="kw-row"><input type="search" id="kw-q" placeholder="Ex.: cadeira ergonômica, toner, notebook" aria-label="Palavra-chave"><button class="btn2 prim" type="button" data-kw-buscar>Buscar no PNCP</button></div>
+    <p class="fonte" style="margin:8px 0 0">Procura nos editais que estão recebendo proposta ou vão receber, nos estados da empresa (nenhum estado marcado: Brasil todo). Os resultados podem ir para o quadro da empresa.</p>
+    <div id="kw-res"></div></section>
   <h1 class="t">Oportunidades</h1>
   <p class="sub">O que o Farejador encontrou no PNCP dentro das atividades da empresa. Analise, decida e acompanhe cada licitação no quadro.</p>
   <p class="fonte" id="fonte">Carregando oportunidades…</p>
@@ -444,7 +462,7 @@ function motivoDesatualizada() {
   return buscaDesatualizada() ? "As atividades ou os estados mudaram depois da última busca. Clique em Iniciar Farejador para buscar de novo." : "";
 }
 function buscaDesatualizada() {   // atividades ou estados mudaram depois da última busca
-  const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo) return false;
+  const e = emp(), r = S.res[S.empId]; if (!e || !r || S.demo || r.soPalavras) return false;
   const termos = new Set((r.termos || []).map(norm));
   const novos = e.areas.filter(a => a.ativa).flatMap(a => a.termos).some(t => !termos.has(norm(t)));
   return novos || e.ufs.some(u => !(r.ufs || []).includes(u));
@@ -456,10 +474,11 @@ function casados() {            // oportunidades que casam com as atividades da 
   const k = [S.ops.length, S.ops[0]?.id, S.empId, S.areaSel, JSON.stringify(termos), evitar.join("|")].join("#");
   if (_memo.k === k) return _memo.v;
   let v;
-  if (!termos.length) v = e ? [] : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
+  if (!termos.length) v = e ? S.ops.filter(o => o.via === "palavra" && S.areaSel == null).map(o => Object.assign(o, {_pts:10, _hit:[o.palavra]})) : S.ops.map(o => Object.assign(o, {_pts:0, _hit:[]}));
   else {
     v = [];
     for (const o of S.ops) {
+      if (o.via === "palavra") { if (S.areaSel == null) { o._hit = [o.palavra]; o._pts = 10; v.push(o); } continue; }   // veio de uma busca por palavra-chave: o usuário pediu, não depende das atividades
       const t = o._n || (o._n = norm(o.objeto));
       if (evitar.some(x => t.includes(x))) continue;
       const hit = [...new Set(termos.filter(([k2]) => reTermo(k2).test(t)).map(x => x[0]))];
@@ -604,12 +623,13 @@ function itemDoPncp(r) {
     link_origem:r.linkSistemaOrigem || r.linkProcessoEletronico || null, arquivos_api:`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${r.anoCompra}/${r.sequencialCompra}/arquivos`,
     numero_compra:r.numeroCompra, ano:r.anoCompra, processo:r.processo};
 }
-async function pncpGet(url, fz, rapido) {
-  for (let i = 0; i < (rapido ? 1 : 10); i++) {
+async function pncpGet(url, fz, max) {
+  const N = max || 10;
+  for (let i = 0; i < N; i++) {
     let r;
     try { r = await fetch(url, {headers:{Accept:"application/json"}}); }
     catch (err) {   // o PNCP responde 429 sem o cabeçalho CORS: o navegador só mostra "Failed to fetch"
-      if (rapido || i === 9) throw err;
+      if (i === N - 1) throw err;
       fz.msg = "O PNCP está limitando as consultas. Aguardando para retomar…"; await dormir(Math.min(90000, 10000 * (i + 1))); continue;
     }
     if (r.status === 204) return {data:[]};
@@ -628,7 +648,7 @@ async function iniciarFarejador() {
   if (!e.ufs.length) { S.fz = {estado:"erro", msg:"Escolha os estados onde buscar (tela Empresa, “Onde o Farejador busca”)."}; return render(); }
   const f = S.fz = {estado:"rodando", empId:e.id, parar:false, total:e.ufs.length * e.mods.length, feitos:0, lidas:0, achadas:0, msg:"Conectando ao PNCP…", ini:Date.now()};
   const ate = new Date(Date.now() + e.dias * 864e5), dataFinal = ate.toISOString().slice(0, 10).replace(/-/g, ""), achadas = new Map(), agora = Date.now();
-  try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, true); }
+  try { await pncpGet(`${PNCP}?dataFinal=${dataFinal}&codigoModalidadeContratacao=6&uf=${e.ufs[0]}&pagina=1&tamanhoPagina=10`, f, 1); }
   catch (err) { S.fz = {estado:"erro", msg:"Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca ao vivo fica bloqueada; abra o produto.html no navegador do computador."}; return render(); }
   const pares = e.ufs.flatMap(uf => e.mods.map(m => [uf, m]));
   const trabalhar = async () => {
@@ -653,7 +673,8 @@ async function iniciarFarejador() {
   };
   try { await Promise.all([trabalhar(), trabalhar()]); }
   catch (err) { f.erro = err.message || String(err); }
-  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], itens:[...achadas.values()]};
+  const mantidos = (S.res[e.id]?.itens || []).filter(o => o.via === "palavra" && !achadas.has(o.id));
+  S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[...e.ufs], termos:[...new Set(termos)], itens:[...achadas.values(), ...mantidos]};
   const gravou = gravarRes(e.id, S.res[e.id]);
   f.estado = f.erro ? "erro" : f.parar ? "parado" : "concluido";
   f.msg = f.erro ? `A busca parou: ${f.erro}. O que já foi encontrado (${achadas.size}) foi mantido.` : `${f.parar ? "Busca interrompida" : "Busca concluída"}: ${f.lidas} editais lidos (${f.ignoradas || 0} revogados, anulados ou suspensos ignorados), ${achadas.size} dentro das atividades da empresa.` + (gravou ? "" : " Não coube guardar o resultado neste navegador.");
@@ -713,6 +734,49 @@ async function carregarDocs(id, guardar) {
     try { d.itens = await listaPncp(); d.aviso = "Não consegui guardar uma cópia (" + (err.message || err) + "). Os links abaixo vêm direto do PNCP."; }
     catch (e2) { d.erro = "Não consegui buscar os documentos. Abra o edital pelo PNCP."; }
   } finally { d.carregando = false; if (S.aberta === id) atualizarDocs(id); }
+}
+
+
+/* ---------- busca por palavra-chave (a mesma do portal do PNCP, com status "recebendo proposta") ---------- */
+const PNCP_BUSCA = "https://pncp.gov.br/api/search/";
+function itemDaBusca(x, kw) {
+  const [, , cnpj, ano, seq] = String(x.item_url || "").split("/");   // "/compras/{cnpj}/{ano}/{sequencial}"
+  const t = z => z ? new Date(z + "-03:00").toISOString() : null;   // o portal informa o horário de Brasília, sem fuso
+  return {id:x.numero_controle_pncp, orgao:x.orgao_nome, uf:x.uf, municipio:x.municipio_nome, objeto:x.description || x.title, valor_estimado:x.valor_global,
+    modalidade:x.modalidade_licitacao_nome, encerramento_proposta:t(x.data_fim_vigencia), abertura_proposta:t(x.data_inicio_vigencia), link_origem:null,
+    arquivos_api:`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${seq}/arquivos`, numero_compra:x.numero, ano:Number(x.ano), processo:null, via:"palavra", palavra:kw};
+}
+async function buscarPalavra(kw) {
+  const e = emp(); kw = (kw || "").trim(); if (!e) return;
+  if (kw.length < 2) { S.kw = {erro:"Digite ao menos 2 letras."}; return renderKw(); }
+  const k = S.kw = {q:kw, carregando:true, msg:"Buscando no PNCP…", itens:[], total:0, ignoradas:0, truncado:false}; renderKw();
+  const ufs = e.ufs.length ? e.ufs : [""], achados = new Map();
+  try {
+    for (const uf of ufs) {
+      for (let pg = 1; pg <= 3; pg++) {   // até 150 resultados por estado
+        k.msg = `Buscando “${kw}”${uf ? " em " + uf : " no Brasil todo"} · página ${pg}…`; renderKw();
+        const p = new URLSearchParams({q:kw, tipos_documento:"edital", ordenacao:"-data", status:"recebendo_proposta", pagina:pg, tam_pagina:50}); if (uf) p.set("ufs", uf);
+        const d = await pncpGet(PNCP_BUSCA + "?" + p, k, pg === 1 && uf === ufs[0] ? 3 : 10);
+        if (pg === 1) { k.total += d.total || 0; if ((d.total || 0) > 150) k.truncado = true; }
+        for (const x of d.items || []) {
+          if (String(x.situacao_id) !== "1" || x.cancelado) { k.ignoradas++; continue; }   // revogada, anulada ou suspensa
+          const it = itemDaBusca(x, kw); if (vigente(it)) achados.set(it.id, it);
+        }
+        if (pg * 50 >= (d.total || 0)) break;
+        await dormir(300);
+      }
+    }
+    k.itens = [...achados.values()].sort((a, b) => (a.encerramento_proposta || "9").localeCompare(b.encerramento_proposta || "9"));
+  } catch (err) { k.erro = err instanceof TypeError ? "Não consegui acessar o PNCP daqui. Na visualização do claude.ai a busca fica bloqueada; use o endereço publicado." : "A busca falhou: " + (err.message || err); }
+  k.carregando = false; renderKw();
+}
+function adicionarDaBusca(ids) {
+  const e = emp(), k = S.kw; if (!e || !k) return 0;
+  let r = S.res[e.id]; if (!r) r = S.res[e.id] = {versao:2, quando:new Date().toISOString(), ufs:[], termos:[], itens:[], soPalavras:true};
+  const tem = new Set(r.itens.map(o => o.id)); let n = 0;
+  for (const it of k.itens) if (ids.includes(it.id) && !tem.has(it.id)) { r.itens.push(it); n++; }
+  if (n) { gravarRes(e.id, r); recomporOps(); }
+  return n;
 }
 
 /* ============ SALA DE CONTROLE (SVG isométrico) ============ */
@@ -1068,8 +1132,23 @@ function viewInicio(m) {
     <section class="painel passos"><h2>Primeiros passos</h2>${passos()}</section></div>`;
 }
 
+function renderKw() {
+  const el = $("#kw-res"); if (!el) return; const k = S.kw;
+  if (!k) { el.innerHTML = ""; return; }
+  if (k.carregando) { el.innerHTML = `<div class="aviso info" role="status">${esc(k.msg)}</div>`; return; }
+  if (k.erro) { el.innerHTML = `<div class="aviso">${esc(k.erro)}</div>`; return; }
+  const no = new Set(S.ops.map(o => o.id)), novos = k.itens.filter(o => !no.has(o.id)), lim = k.limite || 30, e = emp();
+  const ja = e && e.areas.some(a => a.termos.some(t => norm(t) === norm(k.q)));
+  el.innerHTML = `<div class="kw-h"><b>${k.itens.length} ${k.itens.length === 1 ? "licitação" : "licitações"} para “${esc(k.q)}”</b><span>${k.itens.length - novos.length ? (k.itens.length - novos.length) + " já no quadro · " : ""}${k.ignoradas ? k.ignoradas + " revogadas, anuladas ou suspensas ignoradas · " : ""}${k.truncado ? "mostrando as primeiras 150 por estado" : "status: recebendo ou a receber proposta"}</span>
+    <div class="acoes" style="margin:0"><button class="btn2 prim" type="button" data-kw-todas ${novos.length ? "" : "disabled"}>Adicionar todas ao quadro (${novos.length})</button>${ja ? "" : `<button class="btn2" type="button" data-kw-salvar>Salvar “${esc(k.q)}” como atividade da empresa</button>`}<button class="btn2" type="button" data-kw-limpar>Limpar</button></div></div>` +
+    (k.itens.length ? k.itens.slice(0, lim).map(o => { const d = diasPara(o.encerramento_proposta), dentro = no.has(o.id);
+      return `<div class="kwr"><div class="kwr-t"><span class="org">${esc(o.uf)} · ${esc(o.orgao)}</span><div class="obj">${esc(o.objeto)}</div><div class="meta"><span class="pill fase ${faseDe(o)}">${FASES[faseDe(o)]}</span><span class="pill ${d != null && d <= 3 ? "warn" : ""}">${rotuloPrazo(d)}</span><span class="valor">${esc(brl(o.valor_estimado))}</span><span>${esc(o.modalidade || "")}</span></div></div>
+      <div class="kwr-a">${dentro ? '<span class="pill ok">no quadro</span>' : `<button class="acao" type="button" data-kw-add="${esc(o.id)}">Adicionar</button>`}<button class="acao prim" type="button" data-kw-abrir="${esc(o.id)}">Abrir</button></div></div>`; }).join("") +
+      (k.itens.length > lim ? `<button class="mais" type="button" data-kw-mais>Mostrar mais ${Math.min(30, k.itens.length - lim)}</button>` : "") : '<div class="vazio">Nenhuma licitação recebendo proposta com essa palavra nos estados da empresa.</div>');
+}
+
 function renderOport() {
-  $("#empbar2").innerHTML = empbar() + fzStrip();
+  $("#empbar2").innerHTML = empbar() + fzStrip(); renderKw();
   const U = universo();
   const r = S.res[S.empId];
   $("#fonte").innerHTML = esc(`${fonteTexto()} · ${U.filter(vigente).length} oportunidades`) + (S.demo ? ' <button class="lnk" type="button" data-demo-off>Sair da demonstração</button>' : "") +
@@ -1198,6 +1277,13 @@ function aoClicar(ev) {
   if ("buscarCnpj" in D) return buscarCnpj();
   if ("fzIniciar" in D) return iniciarFarejador();
   if (D.analisar) return analisarEdital(D.analisar);
+  if ("kwBuscar" in D) return buscarPalavra($("#kw-q").value);
+  if ("kwLimpar" in D) { S.kw = null; return renderKw(); }
+  if ("kwMais" in D) { S.kw.limite = (S.kw.limite || 30) + 30; return renderKw(); }
+  if (D.kwAdd) { adicionarDaBusca([D.kwAdd]); salvar(); return render(); }
+  if ("kwTodas" in D) { const n = adicionarDaBusca(S.kw.itens.map(o => o.id)); salvar(); S.msg = ""; render(); return; }
+  if (D.kwAbrir) { adicionarDaBusca([D.kwAbrir]); salvar(); render(); return abrirDetalhe(D.kwAbrir, false); }
+  if ("kwSalvar" in D) { const e0 = emp(), kw = S.kw.q; if (e0 && !e0.areas.some(a => a.termos.some(t => norm(t) === norm(kw)))) { e0.areas.push({id:"x" + novoId(), nome:kw.charAt(0).toUpperCase() + kw.slice(1), ativa:true, termos:[kw]}); } return mudouTermos(); }
   if ("salvarToken" in D) { gravarToken($("#tok_analista").value.trim()); S.msgTok = "Código salvo neste navegador."; return render(); }
   if ("testarToken" in D) { gravarToken($("#tok_analista").value.trim()); return testarToken(); }
   if ("demo" in D) { S.demo = true; recomporOps(); return render(); }
@@ -1245,6 +1331,7 @@ document.addEventListener("input", ev => {   // observações da licitação: sa
   _tObs = setTimeout(() => { salvar(); $("#obs-st") && ($("#obs-st").textContent = "Salvo neste navegador."); renderNav(metricas()); }, 500);
 });
 document.addEventListener("keydown", ev => {
+  if (ev.key === "Enter" && ev.target.id === "kw-q") { ev.preventDefault(); buscarPalavra(ev.target.value); return; }
   if (ev.key === "Escape") { if (S.modal) { S.modal = null; render(); } else if (!$("#gaveta").hidden) fecharGaveta(); }
   if (ev.key === "Enter" && ev.target.dataset?.termoIn !== undefined) { ev.preventDefault(); addTermo(+ev.target.dataset.termoIn); return; }
   if (ev.key === "Enter" && ev.target.id === "novo_evitar") { ev.preventDefault(); addEvitar(); return; }
