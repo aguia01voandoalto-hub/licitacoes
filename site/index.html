@@ -329,6 +329,19 @@ table.prop input{width:110px;text-align:right}
 .valg{font:700 15px var(--f-display);color:var(--navy);padding-top:4px}
 .em-in{width:100%;font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;margin-top:3px}
 
+/* chat com o Analista */
+.chat{display:grid;gap:8px}
+.chat-msgs{display:grid;gap:8px;max-height:420px;overflow:auto;padding:2px}
+.msg{border-radius:10px;padding:8px 12px;font-size:14px;line-height:1.5;max-width:92%;min-width:min(260px,100%);overflow-wrap:anywhere}
+.msg>b{display:block;font:800 11.5px var(--f-display);margin-bottom:2px;color:var(--navy)}
+.msg.u{background:var(--accent-soft);justify-self:end}
+.msg.a{background:var(--surface2);border:1px solid var(--line);justify-self:start}
+.msg.erro{background:var(--warn-soft);border-color:var(--warn)}
+.chat-in{display:flex;gap:8px;align-items:flex-end}
+.chat-in textarea{flex:1;min-width:0;font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;resize:vertical}
+
+#chat_alvo{width:100%;font:14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:4px}
+
 .fd{font-family:var(--f-display)}.fm{font-family:var(--f-mono)}
 .varre{transform-box:fill-box;transform-origin:50% 50%}
 </style>
@@ -578,7 +591,7 @@ function universo() {            // idem, restrito aos estados de interesse (nen
   if (!ufs.length) return c;
   const k = _memo.k + "#" + ufs.join(",");
   if (_memoU.k === k) return _memoU.v;
-  _memoU = {k, v: c.filter(o => ufs.includes(o.uf))}; return _memoU.v;
+  _memoU = {k, v: c.filter(o => o.avulso || ufs.includes(o.uf))}; return _memoU.v;
 }
 function contagemPorUf() {       // licitações abertas por estado, dentro das atividades da empresa
   const n = {}; for (const o of casados()) if (vigente(o) && o.uf) n[o.uf] = (n[o.uf] || 0) + 1; return n;
@@ -853,18 +866,19 @@ async function analisarEdital(id, forcar) {
 // Edital avulso: um arquivo que não está no PNCP. Vira uma oportunidade da empresa já em "Em análise".
 const lerBase64 = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => no(new Error("Não consegui ler o arquivo.")); r.readAsDataURL(f); });
 async function enviarAvulso() {
-  const f = $("#avulso_arq")?.files?.[0], e = emp(); if (!e) return;
+  const fs = [...($("#avulso_arq")?.files || [])], f = fs[0], e = emp(); if (!e) return;
   const M = mapasDe(e.id), emp0 = e.id;
   if (!S.user) { S.avulso = {erro:"Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa."}; return render(); }
   if (!f) { S.avulso = {erro:"Escolha o arquivo do edital (PDF ou Word)."}; return render(); }
-  if (!/\.(pdf|docx?|zip)$/i.test(f.name)) { S.avulso = {erro:"Formato não suportado. Envie PDF, Word (.doc ou .docx) ou ZIP com o edital."}; return render(); }
-  if (f.size > 18 * 1024 * 1024) { S.avulso = {erro:"O arquivo passa de 18 MB. Envie só o edital, sem os anexos."}; return render(); }
+  if (fs.length > 8) { S.avulso = {erro:"Envie no máximo 8 arquivos por vez."}; return render(); }
+  const ruim = fs.find(x => !/\.(pdf|docx?|zip)$/i.test(x.name)); if (ruim) { S.avulso = {erro:"“" + ruim.name + "”: formato não suportado. Envie PDF, Word (.doc ou .docx) ou ZIP."}; return render(); }
+  if (fs.reduce((t, x) => t + x.size, 0) > 18 * 1024 * 1024) { S.avulso = {erro:"Os arquivos passam de 18 MB no total. Envie só o edital e os anexos principais."}; return render(); }
   const orgao = ($("#avulso_orgao")?.value || "").trim(), objeto = ($("#avulso_obj")?.value || "").trim(), prazo = $("#avulso_prazo")?.value || "";
-  S.avulso = {ocupado:true, nome:f.name}; render();
+  S.avulso = {ocupado:true, nome:fs.length > 1 ? fs.length + " arquivos" : f.name}; render();
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 240000);
   try {
-    const base64 = await lerBase64(f);
-    const r = await chamarAnalista({acao:"avulso", empresa_id:emp0, nome:f.name, base64, opp:{orgao:orgao || null, objeto:objeto || null, encerramento_proposta:prazo ? new Date(prazo).toISOString() : null}}, ctl.signal);
+    const arquivos = []; for (const x of fs) arquivos.push({nome:x.name, base64:await lerBase64(x)});
+    const r = await chamarAnalista({acao:"avulso", empresa_id:emp0, arquivos, opp:{orgao:orgao || null, objeto:objeto || null, encerramento_proposta:prazo ? new Date(prazo).toISOString() : null}}, ctl.signal);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
     const agora = new Date().toISOString();
@@ -1349,7 +1363,7 @@ function gaveta(id, manter) {
       ${er ? `<div class="aviso">${esc(er)}</div>` : ""}
       ${run ? "" : tok ? `<div><button class="btn2 prim" type="button" data-analisar="${esc(id)}">Analisar este edital</button></div>` : '<div class="aviso">Para usar o Analista, informe o código de acesso na tela Empresa (Configuração do Analista).</div><div><button class="btn2" type="button" data-view="empresa">Abrir a configuração do Analista</button></div>'}</div>`;
   }
-  R += `</section>${blocoEmail(id)}<section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
+  R += `</section><section><h3>Pergunte ao Analista</h3><div class="bloco">${blocoChat(id, false)}</div></section>${blocoEmail(id)}<section><h3>Despachante · habilitação</h3><div class="bloco">${a ? "" : `<div class="aviso">Sem análise do edital, a conferência usa a lista padrão de documentos.</div>`}` +
     hab.map(x => { const [st, msg] = habilitacaoStatus(x.grupo); return `<div class="item"><span class="${st}">${st==="ok"?"✓":"!"}</span> <b>${esc(GRUPOS[x.grupo]||x.grupo)}:</b> ${esc(x.exigencia)}<span class="cit" style="display:block">${esc(msg)}${x.pagina ? " · edital p. " + esc(x.pagina) : ""}</span></div>`; }).join("") +
     `<div><button class="btn2" type="button" data-view="documentos">Abrir o cofre de documentos</button></div></div></section>
     ${blocoProposta(id)}<section><h3>Redator · declarações</h3><div class="bloco"><div class="aviso">Modelos genéricos. Revise com advogado especialista em licitações antes de assinar ou enviar.${e && e.razao ? "" : " Cadastre a empresa para preencher automaticamente."}</div>` +
@@ -1359,7 +1373,7 @@ function gaveta(id, manter) {
     <h2 class="det-h">${esc(o.objeto)}</h2><div class="meta" style="margin-bottom:6px">${esc(o.orgao)}</div>
     <div class="det-grid"><div class="det-l">${L}</div><div class="det-r">${R}</div></div></div>`;
   $("#veu").hidden = true; $("#gaveta").hidden = false; document.body.classList.add("sem-rolagem");
-  $("#gaveta").scrollTop = rolagem; if (!manter) $("#gaveta").focus();
+  $("#gaveta").scrollTop = rolagem; if (!manter) $("#gaveta").focus(); rolarChats();
 }
 
 /* ============ E-MAIL PARA O RESPONSÁVEL DECIDIR ============ */
@@ -1529,6 +1543,42 @@ function htmlPacote(id) {
 function docWord(corpo, titulo) {
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
     <style>@page{size:A4;margin:2cm}body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.4}table{border-collapse:collapse;width:100%}td,th{border:1px solid #000;padding:4px;font-size:10pt;vertical-align:top}th{background:#e8eef7}.pb{page-break-before:always}</style></head><body>${corpo}</body></html>`;
+}
+
+/* ============ CHAT COM O ANALISTA ============ */
+const chaveChat = id => "chat_" + String(id).replace(/[^\w]/g, "_");
+const fmtMsg = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+const chatDe = (emp, id) => ((S.dec[emp] || {})[id] || {}).chat || [];
+const chatGravar = (emp, id, chat) => { const m = (S.dec[emp] = S.dec[emp] || {}); m[id] = {...(m[id] || {}), chat}; };
+const SUGESTOES = ["Qual o prazo e o local de entrega?", "Exige amostra, visita técnica ou atestado?", "Quais as multas e garantias?", "Posso participar sendo ME/EPP?", "O que pode me desclassificar?"];
+function blocoChat(id, geral) {
+  const k = chaveChat(id), msgs = chatDe(S.empId, id), oc = !!(mapasDe(S.empId).chatOcupado || {})[id], sem = !S.user || !lerToken();
+  return `<div class="chat" id="${k}">
+    <div class="chat-msgs">${msgs.length || oc ? "" : `<div class="fonte" style="margin:0">${geral ? "Tire dúvidas gerais sobre licitações (Lei 14.133, habilitação, proposta, recursos). Para dúvidas de um edital, abra a licitação e pergunte lá." : "Pergunte sobre este edital: o Analista relê os documentos e responde citando a página."}</div>`}
+      ${msgs.map(m => `<div class="msg ${m.r}${m.e ? " erro" : ""}"><b>${m.r === "u" ? "Você" : "Analista"}</b><div>${fmtMsg(m.t)}</div></div>`).join("")}
+      ${oc ? '<div class="msg a"><b>Analista</b><div class="aviso info" role="status">Lendo o edital e pensando…</div></div>' : ""}</div>
+    ${!geral && !msgs.length && !oc ? `<div class="chips" style="margin-bottom:6px">${SUGESTOES.map(q => `<button class="chip" type="button" data-chat-sug="${esc(id)}" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}
+    ${sem ? `<div class="aviso">${!S.user ? "Entre na sua conta para conversar com o Analista." : "Falta o código de acesso do Analista (Empresa → Configuração do Analista)."}</div>` : ""}
+    <div class="chat-in"><textarea id="${k}_in" rows="2" data-chat-in="${esc(id)}" placeholder="Escreva sua dúvida e tecle Enter para enviar…" aria-label="Pergunta ao Analista" ${oc ? "disabled" : ""}></textarea>
+      <button class="btn2 prim" type="button" data-chat-enviar="${esc(id)}" ${oc ? "disabled" : ""}>Enviar</button></div>
+    ${msgs.length ? `<button class="lnk" type="button" data-chat-limpar="${esc(id)}">Limpar a conversa</button>` : ""}</div>`;
+}
+const rolarChats = () => document.querySelectorAll(".chat-msgs").forEach(x => { x.scrollTop = x.scrollHeight; });
+async function enviarPergunta(id, texto) {
+  const emp0 = S.empId, M = mapasDe(emp0); M.chatOcupado = M.chatOcupado || {}; if (M.chatOcupado[id]) return;
+  const q = String(texto ?? $("#" + chaveChat(id) + "_in")?.value ?? "").trim(); if (!q) return;
+  const antes = chatDe(emp0, id).filter(m => !m.e), o = S.ops.find(x => x.id === id), redesenhar = () => { if (S.empId !== emp0) return; if (S.aberta === id) gaveta(id, true); if (S.view === "analista") render(); rolarChats(); };
+  if (!S.user || !lerToken()) { chatGravar(emp0, id, [...chatDe(emp0, id), {r:"u", t:q}, {r:"a", t:"Preciso do login e do código de acesso do Analista para responder.", e:true}]); return redesenhar(); }
+  chatGravar(emp0, id, [...chatDe(emp0, id), {r:"u", t:q}]); M.chatOcupado[id] = true; redesenhar();
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 120000);
+  try {
+    const r = await chamarAnalista({acao:"perguntar", empresa_id:emp0, id, arquivos_api:o?.arquivos_api || null, pergunta:q, historico:antes.slice(-10)}, ctl.signal);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || "O servidor do Analista respondeu HTTP " + r.status + ".");
+    chatGravar(emp0, id, [...chatDe(emp0, id), {r:"a", t:j.resposta}]);
+  } catch (err) {
+    chatGravar(emp0, id, [...chatDe(emp0, id), {r:"a", e:true, t:err.name === "AbortError" ? "Demorei demais para responder. Tente de novo." : err instanceof TypeError ? "Não consegui falar com o servidor do Analista. Confira a conexão." : err.message}]);
+  } finally { clearTimeout(t); delete M.chatOcupado[id]; salvar(); redesenhar(); }
 }
 
 
@@ -1796,7 +1846,7 @@ function render() {
   if (S.view === "propostas") $("#lista-propostas").innerHTML = viewPropostas();
   if (S.view === "documentos") $("#lista-docs").innerHTML = viewDocumentos();
   if (S.view === "empresa") $("#lista-empresa").innerHTML = viewEmpresa();
-  renderModal();
+  renderModal(); rolarChats();
 }
 function irPara(v) {
   if (!VIEWS.includes(v)) return;
@@ -1886,6 +1936,9 @@ function aoClicar(ev) {
     return;
   }
   if ("avulsoEnviar" in D) return enviarAvulso();
+  if (D.chatEnviar) return enviarPergunta(D.chatEnviar);
+  if (D.chatSug) return enviarPergunta(D.chatSug, D.q);
+  if (D.chatLimpar) { chatGravar(S.empId, D.chatLimpar, []); salvar(); if (S.aberta === D.chatLimpar) gaveta(D.chatLimpar, true); if (S.view === "analista") render(); return; }
   if (D.emailGerar) { prepararEmail(D.emailGerar); return; }
   if (D.emailCopiar || D.emailAbrir) {
     const id = D.emailCopiar || D.emailAbrir, m = (mapasDe(S.empId).emails || {})[id]; if (!m || !m.corpo) return;
@@ -1936,6 +1989,7 @@ document.addEventListener("input", ev => {   // observações da licitação: sa
 });
 document.addEventListener("keydown", ev => {
   if (ev.key === "Enter" && ev.target.id === "lg-senha") { ev.preventDefault(); entrar($("#lg-email").value.trim(), $("#lg-senha").value); return; }
+  if (ev.key === "Enter" && !ev.shiftKey && ev.target.dataset?.chatIn) { ev.preventDefault(); enviarPergunta(ev.target.dataset.chatIn); return; }
   if (ev.key === "Enter" && ev.target.id === "nova_palavra") { ev.preventDefault(); addPalavra(); return; }
   if (ev.key === "Escape") { if (S.modal) { S.modal = null; render(); } else if (!$("#gaveta").hidden) fecharGaveta(); }
   if (ev.key === "Enter" && ev.target.dataset?.termoIn !== undefined) { ev.preventDefault(); addTermo(+ev.target.dataset.termoIn); return; }
@@ -1943,6 +1997,7 @@ document.addEventListener("keydown", ev => {
   if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".card,[data-ir]")) { ev.preventDefault(); ev.target.click(); }
 });
 document.addEventListener("change", ev => {
+  if (ev.target.id === "chat_alvo") { S.chatAlvo = ev.target.value; render(); return; }
   const t = ev.target, D = t.dataset, e = emp();
   if (t.id === "sel-emp" || t.id === "sel-emp-h") { if (t.value === "__nova") { novaEmpresa(); S.msg = ""; mudouTermos(); irPara("empresa"); } else escolherEmpresa(t.value); return; }
   if (t.id === "arq") { if (t.files[0]) importar(t.files[0]); return; }
@@ -1981,12 +2036,14 @@ function viewAnalista() {
   const btn = o => S.analisando[o.id] ? '<span class="pill">lendo o edital…</span>' : S.analises[o.id] ? `<span class="pill ${recCl[S.analises[o.id].recomendacao] || ""}">${esc(recRot[S.analises[o.id].recomendacao] || "pronta")}</span>` : lerToken() && S.user ? `<button class="acao" type="button" data-analisar="${esc(o.id)}" style="flex:none">Analisar</button>` : "";
   const sem = !lerToken() || !S.user;
   const av = S.avulso || {}, painelAvulso = `<section class="painel" style="margin-bottom:14px"><h2>Analisar um edital avulso</h2><p class="fonte">Tem um edital que não está no PNCP (recebido por e-mail, de um portal próprio, de um cliente)? Envie o arquivo: o Analista lê, a oportunidade entra em “Em análise” e você segue com e-mail de decisão, proposta e declarações como nas demais.</p>
-    <div class="form" style="max-width:none"><label class="l">Arquivo do edital (PDF, Word ou ZIP, até 18 MB)<input type="file" id="avulso_arq" accept=".pdf,.doc,.docx,.zip,application/pdf" ${av.ocupado ? "disabled" : ""}></label>
+    <div class="form" style="max-width:none"><label class="l">Arquivos do edital: o edital e os anexos que quiser (PDF, Word ou ZIP; até 8 arquivos, 18 MB no total)<input type="file" id="avulso_arq" multiple accept=".pdf,.doc,.docx,.zip,application/pdf" ${av.ocupado ? "disabled" : ""}></label>
     <label>Órgão (opcional)<input id="avulso_orgao" placeholder="Ex.: Prefeitura de Sinop" ${av.ocupado ? "disabled" : ""}></label><label>Título (opcional)<input id="avulso_obj" placeholder="Ex.: Registro de preços de antenas" ${av.ocupado ? "disabled" : ""}></label>
     <label>Propostas até (opcional)<input id="avulso_prazo" type="datetime-local" ${av.ocupado ? "disabled" : ""}></label></div>
     ${av.ocupado ? `<div class="aviso info" role="status">Enviando e lendo “${esc(av.nome)}”. Leva de 30 a 90 segundos…</div>` : `<div><button class="btn2 prim" type="button" data-avulso-enviar>Enviar e analisar</button></div>`}
     ${av.erro ? `<div class="aviso">${esc(av.erro)}</div>` : ""}</section>`;
-  return empbar() + painelAvulso + `<div class="kpis"><div class="kpi"><b>${prontas.length}</b><span>análises prontas desta empresa</span></div><div class="kpi"><b>${fila.length}</b><span>em análise (aguardando você)</span></div><div class="kpi"><b>${espera.length}</b><span>aguardando decisão do responsável</span></div></div>` +
+  const sel = S.chatAlvo && (S.chatAlvo === "_geral" || prontas.some(o => o.id === S.chatAlvo)) ? S.chatAlvo : "_geral";
+  const painelChat = `<section class="painel" style="margin-bottom:14px"><h2>Pergunte ao Analista</h2><label class="fonte" style="margin:0 0 8px">Sobre o quê?<select id="chat_alvo" aria-label="Assunto da conversa" style="max-width:100%"><option value="_geral" ${sel === "_geral" ? "selected" : ""}>Dúvidas gerais sobre licitações</option>${prontas.map(o => `<option value="${esc(o.id)}" ${sel === o.id ? "selected" : ""}>${esc(corta(o.orgao + " · " + o.objeto, 90))}</option>`).join("")}</select></label>${blocoChat(sel, sel === "_geral")}</section>`;
+  return empbar() + painelAvulso + painelChat + `<div class="kpis"><div class="kpi"><b>${prontas.length}</b><span>análises prontas desta empresa</span></div><div class="kpi"><b>${fila.length}</b><span>em análise (aguardando você)</span></div><div class="kpi"><b>${espera.length}</b><span>aguardando decisão do responsável</span></div></div>` +
     (sem ? `<div class="aviso" style="margin-bottom:12px">${!S.user ? "Entre na sua conta para usar o Analista: as análises ficam guardadas por empresa." : "Falta o código de acesso do Analista. Informe em Empresa → Configuração do Analista."} <button class="lnk" type="button" data-view="empresa">Abrir a configuração</button></div>` : "") +
     `<div class="paineis" style="grid-template-columns:1fr 1fr">
     <section class="painel"><h2>Para analisar agora</h2><p class="fonte">As oportunidades mais relevantes que ainda não foram lidas.</p>${sug.map(o => linha(o, btn(o))).join("") || '<div class="vazio">Nada pendente. Rode o Farejador para trazer mais oportunidades.</div>'}</section>

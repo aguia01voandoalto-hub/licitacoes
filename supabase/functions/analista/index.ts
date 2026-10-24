@@ -179,18 +179,18 @@ async function salvarDocumentos(db: any, empresa: string, id: string, arquivosAp
 
 class Erro extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
-type Conteudo = { bloco: Record<string, unknown>; arquivo: string; tipo: string; paginasTotal: number | null; paginasLidas: number | null; bytes: number };
+type Conteudo = { bloco: Record<string, unknown>; blocos?: Record<string, unknown>[]; arquivo: string; tipo: string; paginasTotal: number | null; paginasLidas: number | null; bytes: number };
 
-async function prepararConteudo(bytes: Uint8Array, nome: string, nivel = 0): Promise<Conteudo> {
+async function prepararConteudo(bytes: Uint8Array, nome: string, nivel = 0, maxPag = MAX_PAGINAS): Promise<Conteudo> {
   const e = ext(nome), cab = new TextDecoder("latin1").decode(bytes.slice(0, 5));
   if (e === "pdf" || cab.startsWith("%PDF")) {
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const total = doc.getPageCount();
     let saida = bytes, lidas = total;
-    if (total > MAX_PAGINAS) {
+    if (total > maxPag) {
       const novo = await PDFDocument.create();
-      (await novo.copyPages(doc, Array.from({ length: MAX_PAGINAS }, (_, i) => i))).forEach((p) => novo.addPage(p));
-      saida = await novo.save(); lidas = MAX_PAGINAS;
+      (await novo.copyPages(doc, Array.from({ length: maxPag }, (_, i) => i))).forEach((p) => novo.addPage(p));
+      saida = await novo.save(); lidas = maxPag;
     }
     let bin = ""; for (let i = 0; i < saida.length; i += 0x8000) bin += String.fromCharCode(...saida.subarray(i, i + 0x8000));
     return { bloco: { type: "document", source: { type: "base64", media_type: "application/pdf", data: btoa(bin) } }, arquivo: nome, tipo: "pdf", paginasTotal: total, paginasLidas: lidas, bytes: bytes.length };
@@ -210,7 +210,7 @@ async function prepararConteudo(bytes: Uint8Array, nome: string, nivel = 0): Pro
       const itens = Object.entries(unzipSync(bytes)).filter(([n]) => /\.(pdf|docx)$/i.test(n) && !n.includes("__MACOSX"));
       if (!itens.length) throw new Erro(422, "O pacote do edital não tem PDF nem Word legível.");
       itens.sort((a, b) => (/edital/i.test(b[0]) ? 1 : 0) - (/edital/i.test(a[0]) ? 1 : 0) || b[1].length - a[1].length);
-      return prepararConteudo(itens[0][1], itens[0][0].split("/").pop()!, 1);
+      return prepararConteudo(itens[0][1], itens[0][0].split("/").pop()!, 1, maxPag);
     }
   }
   throw new Erro(422, `Formato de arquivo não suportado (${e || "desconhecido"}). Abra o edital pelo link e leia manualmente.`);
@@ -230,13 +230,13 @@ async function escolherArquivo(arquivosApi: string): Promise<{ bytes: Uint8Array
   throw ultimo ?? new Erro(422, "Nenhum arquivo do edital pôde ser lido.");
 }
 
-async function chamarClaude(conteudo: Conteudo, opp: Record<string, unknown>) {
+async function chamarClaude(conteudo: Conteudo, opp: Record<string, unknown>, nota = "") {
   const chave = Deno.env.get("ANTHROPIC_API_KEY");
   if (!chave) throw new Erro(503, "A chave da Anthropic não está configurada no servidor (ANTHROPIC_API_KEY).");
   const contexto = `Dados da licitação no PNCP: órgão ${opp.orgao ?? "?"} (${opp.municipio ?? ""}/${opp.uf ?? ""}); modalidade ${opp.modalidade ?? "?"}; valor estimado ${opp.valor_estimado ?? "sigiloso"}; propostas até ${opp.encerramento_proposta ?? "?"}; objeto resumido: ${opp.objeto ?? "?"}.` +
-    (conteudo.paginasTotal && conteudo.paginasLidas! < conteudo.paginasTotal ? `\nATENÇÃO: o PDF tem ${conteudo.paginasTotal} páginas e você recebeu só as primeiras ${conteudo.paginasLidas}. Registre isso em lacunas.` : "");
+    (conteudo.paginasTotal && conteudo.paginasLidas! < conteudo.paginasTotal ? `\nATENÇÃO: os PDFs somam ${conteudo.paginasTotal} páginas e você recebeu só ${conteudo.paginasLidas}. Registre isso em lacunas.` : "") + nota;
   // Os modelos novos não aceitam forçar a ferramenta (tool_choice "tool"): deixamos em automático e pedimos a chamada no texto.
-  const mensagens: Record<string, unknown>[] = [{ role: "user", content: [conteudo.bloco, { type: "text", text: contexto + "\n\nAnalise este edital e registre o resultado chamando a ferramenta registrar_analise." }] }];
+  const mensagens: Record<string, unknown>[] = [{ role: "user", content: [...(conteudo.blocos ?? [conteudo.bloco]), { type: "text", text: contexto + "\n\nAnalise este edital e registre o resultado chamando a ferramenta registrar_analise." }] }];
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -257,22 +257,45 @@ async function chamarClaude(conteudo: Conteudo, opp: Record<string, unknown>) {
   throw new Erro(502, "O modelo não devolveu a análise estruturada. Tente de novo.");
 }
 
-// Edital avulso: o usuário envia o arquivo (PDF, Word) que não está no PNCP; vira uma oportunidade da empresa, analisada e guardada como as demais.
+// Junta vários arquivos (edital + anexos) em um só pedido ao modelo, respeitando o limite de 100 páginas no total.
+function juntar(cs: Conteudo[]): Conteudo {
+  if (cs.length === 1) return cs[0];
+  const blocos: Record<string, unknown>[] = [];
+  cs.forEach((c, i) => { blocos.push({ type: "text", text: `DOCUMENTO ${i + 1} DE ${cs.length}: ${c.arquivo}` }); blocos.push(c.bloco); });
+  const somar = (k: "paginasTotal" | "paginasLidas") => cs.some((c) => c[k] != null) ? cs.reduce((t, c) => t + (c[k] ?? 0), 0) : null;
+  return { ...cs[0], blocos, arquivo: cs.map((c) => c.arquivo).join(" + "), bytes: cs.reduce((t, c) => t + c.bytes, 0), paginasTotal: somar("paginasTotal"), paginasLidas: somar("paginasLidas") };
+}
+const decodificar = (b64: string) => { const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return bytes; };
+
+// Edital avulso: o usuário envia os arquivos (edital e anexos, PDF/Word/ZIP) que não estão no PNCP; vira uma oportunidade da empresa, analisada e guardada como as demais.
 // deno-lint-ignore no-explicit-any
 async function analisarAvulso(db: any, empresa: string, c: any) {
-  const nome = String(c.nome ?? "").slice(0, 200), b64 = String(c.base64 ?? ""), opp = (c.opp ?? {}) as Record<string, unknown>;
-  if (!nome || !b64) throw new Erro(400, "Envie o arquivo do edital.");
-  if (b64.length > MAX_BYTES * 1.4) throw new Erro(413, "O arquivo é grande demais para análise automática (acima de 25 MB).");
+  const opp = (c.opp ?? {}) as Record<string, unknown>;
+  const recebidos: { nome: string; b64: string }[] = (Array.isArray(c.arquivos) ? c.arquivos : [{ nome: c.nome, base64: c.base64 }])
+    .map((a: { nome?: string; base64?: string }) => ({ nome: String(a?.nome ?? "").slice(0, 200), b64: String(a?.base64 ?? "") })).filter((a: { nome: string; b64: string }) => a.nome && a.b64);
+  if (!recebidos.length) throw new Erro(400, "Envie o arquivo do edital.");
+  if (recebidos.length > 8) throw new Erro(400, "Envie no máximo 8 arquivos por vez.");
+  if (recebidos.reduce((t, a) => t + a.b64.length, 0) > MAX_BYTES * 1.4) throw new Erro(413, "Os arquivos somam mais de 25 MB. Envie só o edital e os anexos principais.");
   const limite = Number(Deno.env.get("ANALISTA_LIMITE_DIA") ?? 40);
   const { count } = await db.from("analises").select("id", { count: "exact", head: true }).like("origem", "analista%").gte("gerada_em", new Date(Date.now() - 864e5).toISOString());
   if ((count ?? 0) >= limite) throw new Erro(429, `Limite diário de análises atingido (${limite}). Tente amanhã.`);
-  const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const conteudo = await prepararConteudo(bytes, nome);
-  const id = `AV-${crypto.randomUUID()}`, e = ext(nome), path = `${empresa}/${id}/01-${limpar(nome)}`;
-  const up = await db.storage.from("editais").upload(path, bytes, { contentType: MIME[e] ?? "application/octet-stream", upsert: true });
-  const documentos = up.error ? [] : [{ titulo: nome, tipo: "Edital enviado por você", nome, ext: e, bytes: bytes.length,
-    url: `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/editais/${path.split("/").map(encodeURIComponent).join("/")}`, origem: null, publicado_em: new Date().toISOString() }];
-  const analise = await chamarClaude(conteudo, opp);
+  const lista = recebidos.map((a) => ({ nome: a.nome, bytes: decodificar(a.b64) })).sort((x, y) => pontuar({ url: "", titulo: y.nome }) - pontuar({ url: "", titulo: x.nome }));
+  let orcamento = MAX_PAGINAS; const cs: Conteudo[] = [], pulados: string[] = [];
+  for (const f of lista) {
+    if (orcamento <= 0) { pulados.push(`${f.nome} (limite de ${MAX_PAGINAS} páginas)`); continue; }
+    try { const k = await prepararConteudo(f.bytes, f.nome, 0, orcamento); if (k.tipo === "pdf") orcamento -= k.paginasLidas ?? 0; cs.push(k); }
+    catch (e) { if (e instanceof Erro && lista.length > 1) pulados.push(`${f.nome} (${e.message})`); else throw e; }
+  }
+  if (!cs.length) throw new Erro(422, "Nenhum dos arquivos pôde ser lido. Envie PDF ou Word.");
+  const conteudo = juntar(cs), id = `AV-${crypto.randomUUID()}`;
+  const documentos: Record<string, unknown>[] = [];
+  for (const [i, f] of lista.entries()) {
+    const e = ext(f.nome), path = `${empresa}/${id}/${String(i + 1).padStart(2, "0")}-${limpar(f.nome)}`;
+    const up = await db.storage.from("editais").upload(path, f.bytes, { contentType: MIME[e] ?? "application/octet-stream", upsert: true });
+    if (!up.error) documentos.push({ titulo: f.nome, tipo: "Enviado por você", nome: f.nome, ext: e, bytes: f.bytes.length,
+      url: `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/editais/${path.split("/").map(encodeURIComponent).join("/")}`, origem: null, publicado_em: new Date().toISOString() });
+  }
+  const analise = await chamarClaude(conteudo, opp, pulados.length ? `\nARQUIVOS NÃO LIDOS: ${pulados.join("; ")}. Registre isso em lacunas.` : "");
   const dados = { ...analise, id, edital: conteudo.arquivo, paginas_total: conteudo.paginasTotal, paginas_lidas: conteudo.paginasLidas,
     gerado_por: `Analista (${MODELO}) leu ${conteudo.paginasLidas ? conteudo.paginasLidas + " páginas de " : ""}${conteudo.arquivo}.` };
   const { error: e1 } = await db.from("oportunidades").insert({ id, orgao: opp.orgao ?? null, objeto: opp.objeto ?? (analise as { objeto?: string }).objeto ?? null, modalidade: "Edital avulso", encerramento_proposta: opp.encerramento_proposta ?? null });
@@ -280,7 +303,55 @@ async function analisarAvulso(db: any, empresa: string, c: any) {
   const { error } = await db.from("analises").insert({ empresa_id: empresa, id, dados, modelo: MODELO, origem: "analista-avulso" });
   if (error) throw new Erro(500, "A análise ficou pronta, mas não foi possível guardá-la: " + error.message);
   if (documentos.length) await db.from("documentos").upsert({ empresa_id: empresa, id, itens: documentos, atualizado_em: new Date().toISOString() }, { onConflict: "empresa_id,id" });
-  return { id, dados, documentos };
+  return { id, dados, documentos, nao_lidos: pulados };
+}
+
+const SISTEMA_CHAT = `Você é o Analista de um sistema que ajuda empresas a participar de licitações públicas brasileiras (Lei 14.133/2021). Está conversando com o empresário ou a equipe dele.
+Regras:
+- Responda usando SOMENTE o edital e a análise fornecidos. Quando o documento tiver páginas, cite a página no formato (p. N).
+- Se a informação não estiver no material, diga claramente que não consta e indique o que conferir (anexo, termo de referência, esclarecimento ao órgão).
+- Seja direto: respostas curtas, em português do Brasil, com listas quando ajudar. Valores e datas exatamente como no documento.
+- Você apoia a decisão, mas não substitui advogado: em questões jurídicas delicadas (impugnação, recurso, penalidades), recomende revisão por especialista.`;
+const SISTEMA_GERAL = `Você é o Analista de um sistema que ajuda empresas a participar de licitações públicas brasileiras. Responda dúvidas gerais sobre licitações (Lei 14.133/2021, pregão, dispensa, habilitação, proposta, recursos, ME/EPP) em português do Brasil, de forma curta e prática. Se a dúvida for sobre um edital específico, peça para abrir aquela licitação e perguntar lá, onde você lê o documento. Não substitui advogado: em temas jurídicos delicados, recomende especialista. Se não tiver certeza, diga.`;
+
+// Chat: tira dúvidas sobre uma licitação (relê os arquivos guardados) ou dúvidas gerais.
+// deno-lint-ignore no-explicit-any
+async function responderPergunta(db: any, empresa: string, c: any) {
+  const id = String(c.id ?? ""), pergunta = String(c.pergunta ?? "").trim().slice(0, 2000);
+  if (!pergunta) throw new Erro(400, "Escreva a pergunta.");
+  const chave = Deno.env.get("ANTHROPIC_API_KEY"); if (!chave) throw new Erro(503, "A chave da Anthropic não está configurada no servidor (ANTHROPIC_API_KEY).");
+  let hist = (Array.isArray(c.historico) ? c.historico : []).slice(-10).map((m: { r?: string; t?: string }) => ({ role: m.r === "u" ? "user" : "assistant", content: String(m.t ?? "").slice(0, 4000) })).filter((m: { content: string }) => m.content);
+  while (hist.length && hist[0].role === "assistant") hist.shift();
+  hist = hist.filter((m: { role: string }, i: number, a: { role: string }[]) => i === 0 || m.role !== a[i - 1].role);
+  const geral = !id || id === "_geral";
+  let sistema = SISTEMA_GERAL, intro: Record<string, unknown>[] = []; const usou: string[] = [];
+  if (!geral) {
+    sistema = SISTEMA_CHAT;
+    const { data: an } = await db.from("analises").select("dados").eq("empresa_id", empresa).eq("id", id).maybeSingle();
+    const { data: dc } = await db.from("documentos").select("itens").eq("empresa_id", empresa).eq("id", id).maybeSingle();
+    // deno-lint-ignore no-explicit-any
+    const itens = ((dc?.itens ?? []) as any[]).filter((x) => x.url).sort((a, b) => pontuar({ url: "", titulo: b.titulo, tipoDocumentoNome: b.tipo }) - pontuar({ url: "", titulo: a.titulo, tipoDocumentoNome: a.tipo }));
+    const cs: Conteudo[] = []; let orc = MAX_PAGINAS; const maxArq = id.startsWith("AV-") ? 6 : 3;
+    for (const it of itens) {
+      if (orc <= 0 || cs.length >= maxArq) break;
+      if (pontuar({ url: "", titulo: it.titulo, tipoDocumentoNome: it.tipo }) === 0) continue;
+      try { const b = await baixar(it.url); const k = await prepararConteudo(b.bytes, it.nome ?? b.nome, 0, orc); if (k.tipo === "pdf") orc -= k.paginasLidas ?? 0; cs.push(k); usou.push(k.arquivo); } catch (_) { /* tenta o próximo */ }
+    }
+    if (!cs.length && /^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(c.arquivos_api ?? "")) {
+      const arq = await escolherArquivo(c.arquivos_api); const k = await prepararConteudo(arq.bytes, arq.nome); cs.push(k); usou.push(k.arquivo);
+    }
+    const doc = cs.length ? juntar(cs) : null, blocos = doc ? [...(doc.blocos ?? [doc.bloco])] : [];
+    if (blocos.length) blocos[blocos.length - 1] = { ...blocos[blocos.length - 1], cache_control: { type: "ephemeral" } };
+    intro = [...blocos, { type: "text", text: `ANÁLISE JÁ FEITA DESTE EDITAL (JSON):\n${an?.dados ? JSON.stringify(an.dados).slice(0, 12000) : "(ainda não há análise)"}\n\n${doc ? "O edital está acima." : "ATENÇÃO: não consegui reabrir os arquivos do edital; responda só com base na análise acima e avise isso."} A seguir vem a conversa com o usuário.` }];
+  }
+  const mensagens = geral ? [...hist, { role: "user", content: pergunta }] : [{ role: "user", content: intro }, { role: "assistant", content: "Entendido. Pode perguntar." }, ...hist, { role: "user", content: pergunta }];
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": chave, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: MODELO, max_tokens: 1800, system: sistema, messages: mensagens }) });
+  const corpo = await r.json();
+  if (!r.ok) throw new Erro(502, `A API da Anthropic recusou o pedido: ${corpo?.error?.message ?? r.status}`);
+  const texto = (corpo.content ?? []).filter((x: { type: string }) => x.type === "text").map((x: { text: string }) => x.text).join("\n").trim();
+  if (!texto) throw new Erro(502, "O Analista não devolveu resposta. Tente de novo.");
+  return { resposta: texto, arquivos_lidos: usou };
 }
 
 const tokenOk = (recebido: string | null) => {
@@ -299,7 +370,7 @@ Deno.serve(async (req) => {
     const corpo = await req.json();
     const { id, empresa_id, arquivos_api, opp = {}, forcar = false, dry = false, acao = "analisar" } = corpo;
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(empresa_id ?? "")) throw new Erro(400, "Empresa não informada.");
-    if (acao !== "avulso") {
+    if (acao !== "avulso" && acao !== "perguntar") {
       if (!/^\d{14}-\d-\d{6}\/\d{4}$/.test(id ?? "")) throw new Erro(400, "Identificador da licitação inválido.");
       if (!/^https:\/\/pncp\.gov\.br\/api\/pncp\/v1\/orgaos\/\d{14}\/compras\/\d{4}\/\d+\/arquivos$/.test(arquivos_api ?? "")) throw new Erro(400, "Endereço dos arquivos inválido.");
     }
@@ -311,6 +382,7 @@ Deno.serve(async (req) => {
     const { data: dona } = await db.from("empresas").select("id").eq("id", empresa_id).eq("user_id", u.user.id).maybeSingle();
     if (!dona) throw new Erro(403, "Esta empresa não é da sua conta.");
     if (acao === "avulso") return json(await analisarAvulso(db, empresa_id, corpo));
+    if (acao === "perguntar") return json(await responderPergunta(db, empresa_id, corpo));
     if (acao === "documentos") return json({ documentos: await salvarDocumentos(db, empresa_id, id, arquivos_api) });
     if (!forcar && !dry) {
       const { data } = await db.from("analises").select("dados").eq("empresa_id", empresa_id).eq("id", id).maybeSingle();
