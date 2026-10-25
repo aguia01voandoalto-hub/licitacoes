@@ -1872,7 +1872,7 @@ function aoClicar(ev) {
   if (D.abrir && t.tagName !== "BUTTON") return abrirDetalhe(D.abrir, false);
   if ("empbarToggle" in D) { S.compacta = !S.compacta; try { localStorage.setItem("tl_ui_compacta", S.compacta ? "1" : "0"); } catch(err) {} return render(); }
   if (D.ir) return irPara(D.ir);
-  if (D.view) { lerForm(); salvar(); return irPara(D.view); }
+  if (D.view) { lerForm(); salvar(); if ("verTodas" in D) { S.uf = ""; S.fase = ""; S.q = ""; S.soNovas = false; S.areaSel = null; } return irPara(D.view); }
   if ("fechar" in D) return fecharGaveta();
   if (D.uf !== undefined) { S.uf = D.uf; render(); return; }
   if ("soNovas" in D) { S.soNovas = !S.soNovas; render(); return; }
@@ -2020,12 +2020,13 @@ window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
 /* ============ TELA DO FAREJADOR E TELA DO ANALISTA ============ */
 function viewFarejador() {
   const e = emp(); if (!e) return empbar();
-  const r = S.res[e.id], novas = universo().filter(o => o.nova && colDe(o) === "farejadas" && vigente(o)).sort((a, b) => (b._pts || 0) - (a._pts || 0));
-  const por = r?.porPalavra || {};
-  const hist = r ? `<section class="painel"><h2>Resultado da última busca</h2><div class="kpis" style="margin:0"><div class="kpi"><b>${r.itens.length.toLocaleString("pt-BR")}</b><span>licitações encontradas</span></div><div class="kpi"><b>${r.novas ?? 0}</b><span>novas desde a busca anterior</span></div><div class="kpi"><b>${Object.values(por).reduce((x, y) => x + y, 0)}</b><span>vieram das palavras-chave</span></div></div>
-    <div class="fonte" style="margin:8px 0 0">${novas.length ? "As " + Math.min(novas.length, 12) + " novas mais relevantes:" : "Nenhuma novidade desde a busca anterior."}</div>${novas.slice(0, 12).map(o => `<button class="lin" type="button" data-abrir-botao="${esc(o.id)}" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left;cursor:pointer;font:inherit;color:inherit"><span class="tag">${esc(o.uf)}</span><span class="o" title="${esc(o.objeto)}">${esc(o.orgao)} · ${esc(corta(o.objeto, 80))}</span><span class="d">${esc(rotuloPrazo(diasPara(o.encerramento_proposta)))}</span></button>`).join("")}
-    ${novas.length ? `<div style="margin-top:8px"><button class="btn2" type="button" data-view="oportunidades" data-so-novas-ir>Ver todas no quadro</button></div>` : ""}</section>` : "";
-  return empbar() + fzStrip() + `<div class="emp-grid"><div>${painelOQueBusca(e)}${hist}</div><div>${palavrasBox(e)}</div></div>`;
+  const r = S.res[e.id], todas = universo().filter(vigente).sort((a, b) => (b.nova ? 1 : 0) - (a.nova ? 1 : 0) || (b._pts || 0) - (a._pts || 0) || (a.encerramento_proposta || "9").localeCompare(b.encerramento_proposta || "9"));
+  const por = r?.porPalavra || {}, nNovas = todas.filter(o => o.nova && colDe(o) === "farejadas").length, total = r ? r.itens.length : 0;
+  const linhaOp = o => `<button class="lin" type="button" data-abrir-botao="${esc(o.id)}" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left;cursor:pointer;font:inherit;color:inherit"><span class="tag">${esc(o.uf || "—")}</span><span class="o" title="${esc(o.objeto)}">${o.nova ? '<span class="pill ok" style="margin-right:6px">NOVA</span>' : ""}${esc(o.orgao)} · ${esc(corta(o.objeto, 90))}</span><span class="d">${esc(rotuloPrazo(diasPara(o.encerramento_proposta)))}</span></button>`;
+  const hist = r ? `<section class="painel"><h2>Encontradas na última busca</h2><div class="kpis" style="margin:0"><div class="kpi"><b>${total.toLocaleString("pt-BR")}</b><span>licitações encontradas${S.fz.estado === "rodando" ? " até agora" : ""}</span></div><div class="kpi"><b>${r.novas ?? 0}</b><span>novas desde a busca anterior</span></div><div class="kpi"><b>${Object.values(por).reduce((x, y) => x + y, 0)}</b><span>vieram das palavras-chave</span></div></div>
+    <div class="fonte" style="margin:10px 0 0">${todas.length ? `Mostrando ${Math.min(todas.length, 15)} de ${todas.length} que seguem recebendo proposta${nNovas ? " (as novas primeiro)" : ""}:` : "Nenhuma licitação ainda recebendo proposta."}</div>${todas.slice(0, 15).map(linhaOp).join("")}
+    ${todas.length ? `<div style="margin-top:10px"><button class="btn2 prim" type="button" data-view="oportunidades" data-ver-todas>Ver todas as ${todas.length} no quadro de Oportunidades</button></div>` : ""}</section>` : `<section class="painel"><h2>Encontradas na última busca</h2><div class="vazio">Ainda não houve busca para esta empresa. Clique em Iniciar Farejador.</div></section>`;
+  return empbar() + fzStrip() + `<div class="emp-grid"><div>${hist}${painelOQueBusca(e)}</div><div>${palavrasBox(e)}</div></div>`;
 }
 function viewAnalista() {
   const e = emp(); if (!e) return empbar();
